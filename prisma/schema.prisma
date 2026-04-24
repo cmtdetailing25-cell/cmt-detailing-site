@@ -1,0 +1,44 @@
+// Prisma schema for CMT Detailing
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Possible statuses for a lead as it moves through your workflow
+enum LeadStatus {
+  NEW
+  CONTACTED
+  BOOKED
+  LOST
+}
+
+model Lead {
+  id        String     @id @default(cuid())
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  status    LeadStatus @default(NEW)
+
+  // Customer info
+  fullName    String
+  phone       String
+  email       String
+
+  // Vehicle info
+  vehicleYear  String
+  vehicleMake  String
+  vehicleModel String
+
+  // Service info
+  serviceRequested String
+
+  // Job info
+  town          String
+  preferredDate String
+  preferredTime String
+}
