@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import LogoutButton from "@/components/LogoutButton";
 
 export const metadata: Metadata = {
   title: "CMT Admin",
@@ -39,14 +40,7 @@ export default function AdminLayout({
           >
             ← Public site
           </Link>
-          <form method="POST" action="/api/admin/logout">
-            <button
-              type="submit"
-              className="text-gray-500 hover:text-red-400 text-xs transition-colors"
-            >
-              Sign out
-            </button>
-          </form>
+          <LogoutButton />
         </div>
       </aside>
 

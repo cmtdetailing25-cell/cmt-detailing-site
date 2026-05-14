@@ -1,9 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-export async function POST(request: NextRequest) {
-  const response = NextResponse.redirect(
-    new URL("/admin/login", request.url)
-  );
-  response.cookies.set("cmt_admin", "", { maxAge: 0, path: "/" });
+export async function POST() {
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set("cmt_admin", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
   return response;
 }
