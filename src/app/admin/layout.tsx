@@ -32,13 +32,21 @@ export default function AdminLayout({
             {l.label}
           </Link>
         ))}
-        <div className="mt-auto">
+        <div className="mt-auto flex flex-col gap-3">
           <Link
             href="/"
             className="text-gray-500 hover:text-gray-300 text-xs"
           >
             ← Public site
           </Link>
+          <form method="POST" action="/api/admin/logout">
+            <button
+              type="submit"
+              className="text-gray-500 hover:text-red-400 text-xs transition-colors"
+            >
+              Sign out
+            </button>
+          </form>
         </div>
       </aside>
 
