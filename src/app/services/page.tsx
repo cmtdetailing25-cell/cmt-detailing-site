@@ -324,7 +324,7 @@ export default function ServicesPage() {
       {/* ── 1. Hero ─────────────────────────────────────────────────────────── */}
       <section className="relative w-full min-h-[72vh] md:min-h-[80vh] lg:min-h-[88vh] flex items-center justify-center overflow-hidden">
         <Image
-          src="/images/services-hero.PNG"
+          src="/images/services-hero.png"
           alt="CMT Detailing professional services"
           fill
           priority
