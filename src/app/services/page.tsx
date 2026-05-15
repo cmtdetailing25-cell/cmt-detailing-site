@@ -15,6 +15,7 @@ interface CardData {
   featured?: boolean;
   badge?: string;
   featuredStrength?: "strong" | "medium";
+  galleryHref?: string;
 }
 
 // ─── Data ────────────────────────────────────────────────────────────────────
@@ -34,6 +35,7 @@ const coreDetailingServices: CardData[] = [
     bestFor: "Vehicles needing a full interior refresh or heavy use cleaning.",
     cta: "Schedule My Detail",
     ctaHref: "/book",
+    galleryHref: "/services/interior-detail",
   },
   {
     title: "Exterior Detail",
@@ -49,6 +51,7 @@ const coreDetailingServices: CardData[] = [
     bestFor: "Maintaining your vehicle's exterior and restoring shine.",
     cta: "Schedule My Detail",
     ctaHref: "/book",
+    galleryHref: "/services/exterior-detail",
   },
   {
     title: "Full Detail",
@@ -66,6 +69,7 @@ const coreDetailingServices: CardData[] = [
     featured: true,
     badge: "Most Popular",
     featuredStrength: "strong",
+    galleryHref: "/services/full-detail",
   },
 ];
 
@@ -86,6 +90,7 @@ const paintServices: CardData[] = [
     featured: true,
     badge: "Most Popular",
     featuredStrength: "strong",
+    galleryHref: "/services/paint-enhancement",
   },
   {
     title: "Paint Correction",
@@ -100,6 +105,7 @@ const paintServices: CardData[] = [
     bestFor: "Owners wanting near-perfect paint and maximum visual impact.",
     cta: "Get My Quote",
     ctaHref: "/book",
+    galleryHref: "/services/paint-correction",
   },
 ];
 
@@ -118,6 +124,7 @@ const coatingServices: CardData[] = [
     bestFor: "Short-term protection and maintenance.",
     cta: "Protect My Vehicle",
     ctaHref: "/book",
+    galleryHref: "/services/ceramic-coating",
   },
   {
     title: "7-Year Coating",
@@ -136,6 +143,7 @@ const coatingServices: CardData[] = [
     featured: true,
     badge: "Most Popular",
     featuredStrength: "strong",
+    galleryHref: "/services/ceramic-coating",
   },
   {
     title: "9-Year Coating",
@@ -151,6 +159,7 @@ const coatingServices: CardData[] = [
     bestFor: "Maximum protection and long-term ownership.",
     cta: "Get My Quote",
     ctaHref: "/book",
+    galleryHref: "/services/ceramic-coating",
   },
 ];
 
@@ -236,6 +245,7 @@ function ServiceCard({
   featured = false,
   badge,
   featuredStrength = "strong",
+  galleryHref,
 }: CardData) {
   const featuredClasses =
     featuredStrength === "strong"
@@ -281,7 +291,7 @@ function ServiceCard({
         </p>
       )}
 
-      <div className="mt-auto">
+      <div className="mt-auto flex flex-col gap-2">
         <Link
           href={ctaHref}
           className={`block text-center font-semibold py-2.5 px-4 rounded-lg text-sm transition-all duration-200 ${
@@ -292,6 +302,14 @@ function ServiceCard({
         >
           {cta}
         </Link>
+        {galleryHref && (
+          <Link
+            href={galleryHref}
+            className="block text-center text-accent-light hover:text-accent text-xs font-medium py-1.5 transition-colors"
+          >
+            View Gallery →
+          </Link>
+        )}
       </div>
     </div>
   );

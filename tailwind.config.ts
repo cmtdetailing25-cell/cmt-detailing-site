@@ -16,6 +16,10 @@ const config: Config = {
           light: "#6f8fd1",   // lighter — text links, labels
         },
       },
+      fontFamily: {
+        sans: ["var(--font-inter)", "sans-serif"],
+        display: ["var(--font-montserrat)", "sans-serif"],
+      },
     },
   },
   plugins: [],

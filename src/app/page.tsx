@@ -9,26 +9,31 @@ const services = [
     name: "Interior Detail",
     description:
       "Deep cleaning of every surface inside your vehicle — vacuuming, steam cleaning, and odor elimination.",
+    href: "/services/interior-detail",
   },
   {
     name: "Exterior Detail",
     description:
       "Hand wash, clay bar treatment, tire dressing, and window polish for a clean, protected finish.",
+    href: "/services/exterior-detail",
   },
   {
     name: "Full Detail",
     description:
       "A complete interior and exterior detail — the best option for a full vehicle refresh.",
+    href: "/services/full-detail",
   },
   {
     name: "Paint Correction",
     description:
       "Machine polishing to remove swirl marks, light scratches, and oxidation from your paint.",
+    href: "/services/paint-correction",
   },
   {
     name: "Ceramic Coating",
     description:
       "Long-lasting paint protection with a professional ceramic coating that repels water and dirt.",
+    href: "/services/ceramic-coating",
   },
 ];
 
@@ -56,16 +61,19 @@ const resultImages = [
     src: "/images/interior-bmw-1.jpg",
     alt: "BMW interior detail result",
     label: "Interior Detail",
+    href: "/services/interior-detail",
   },
   {
     src: "/images/exterior-genesis.jpg",
     alt: "Genesis exterior detail result",
     label: "Exterior Detail",
+    href: "/services/exterior-detail",
   },
   {
     src: "/images/detail-close.jpg",
     alt: "Close-up detailing work",
-    label: "Attention to Detail",
+    label: "Full Detail",
+    href: "/services/full-detail",
   },
 ];
 
@@ -103,7 +111,10 @@ export default function HomePage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {resultImages.map((img, i) => (
               <FadeUp key={img.src} delay={i * 0.1}>
-                <div className="group relative aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-800">
+                <Link
+                  href={img.href}
+                  className="group relative aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-800 block"
+                >
                   <Image
                     src={img.src}
                     alt={img.alt}
@@ -111,11 +122,16 @@ export default function HomePage() {
                     className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
                     sizes="(max-width: 640px) 100vw, 33vw"
                   />
-                  <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/75 to-transparent" />
-                  <p className="absolute bottom-3 left-4 text-sm font-semibold text-white z-10 tracking-wide">
-                    {img.label}
-                  </p>
-                </div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 p-4 flex items-end justify-between">
+                    <p className="text-sm font-semibold text-white tracking-wide">
+                      {img.label}
+                    </p>
+                    <span className="text-accent-light text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      View Gallery →
+                    </span>
+                  </div>
+                </Link>
               </FadeUp>
             ))}
           </div>
@@ -139,14 +155,20 @@ export default function HomePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {services.map((service, i) => (
               <FadeUp key={service.name} delay={i * 0.06}>
-                <div className="bg-zinc-800/90 backdrop-blur-sm border border-zinc-700 rounded-2xl p-6 flex flex-col gap-2 hover:border-accent/70 hover:-translate-y-1 hover:shadow-[0_0_25px_rgba(66,109,182,0.25)] transition-all duration-200 cursor-pointer h-full">
+                <Link
+                  href={service.href}
+                  className="group bg-zinc-800/90 backdrop-blur-sm border border-zinc-700 rounded-2xl p-6 flex flex-col gap-2 hover:border-accent/70 hover:-translate-y-1 hover:shadow-[0_0_25px_rgba(66,109,182,0.25)] transition-all duration-200 h-full block"
+                >
                   <h3 className="text-white font-semibold text-base">
                     {service.name}
                   </h3>
-                  <p className="text-zinc-400 text-sm leading-relaxed">
+                  <p className="text-zinc-400 text-sm leading-relaxed flex-1">
                     {service.description}
                   </p>
-                </div>
+                  <span className="text-accent-light text-xs font-medium mt-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                    View Gallery →
+                  </span>
+                </Link>
               </FadeUp>
             ))}
 

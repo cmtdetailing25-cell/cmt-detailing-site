@@ -14,7 +14,15 @@ interface SitePhoto {
   createdAt: string;
 }
 
-const CATEGORIES = ["exterior", "interior", "ceramic", "paint-correction", "other"];
+const CATEGORIES = [
+  "interior",
+  "exterior",
+  "full-detail",
+  "paint-enhancement",
+  "paint-correction",
+  "ceramic-coating",
+  "other",
+];
 
 export default function MediaPage() {
   const [photos, setPhotos] = useState<SitePhoto[]>([]);
