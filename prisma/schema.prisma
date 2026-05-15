@@ -42,3 +42,16 @@ model Lead {
   preferredDate String
   preferredTime String
 }
+
+model SitePhoto {
+  id           String   @id @default(cuid())
+  title        String
+  caption      String?
+  imageUrl     String
+  category     String
+  label        String?
+  isFeatured   Boolean  @default(false)
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
