@@ -322,39 +322,46 @@ export default function ServicesPage() {
     <div className="bg-zinc-950">
 
       {/* ── 1. Hero ─────────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden py-28 md:py-36 px-6 text-center">
+      <section className="relative w-full min-h-[72vh] md:min-h-[80vh] lg:min-h-[88vh] flex items-center justify-center overflow-hidden">
         <Image
-          src="/images/bannar.PNG"
-          alt=""
+          src="/images/services-hero.PNG"
+          alt="CMT Detailing professional services"
           fill
-          className="object-contain opacity-[0.04] blur-xl scale-125 pointer-events-none select-none"
+          priority
+          className="object-cover object-center"
           sizes="100vw"
-          aria-hidden="true"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/60 via-zinc-950/80 to-zinc-950 pointer-events-none" />
 
-        <FadeUp className="relative z-10 max-w-3xl mx-auto">
-          <p className="text-zinc-500 text-xs font-semibold uppercase tracking-[0.2em] mb-5">
+        {/* Cinematic overlay — light enough to read the image, dark enough for text */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/40 to-black/65
+                        md:from-black/45 md:via-black/30 md:to-black/55" />
+
+        {/* Bottom fade into the page background so the section below feels connected */}
+        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-zinc-950 to-transparent" />
+
+        <FadeUp className="relative z-10 max-w-3xl mx-auto px-6 text-center py-20 sm:py-28">
+          <p className="text-zinc-400 text-[11px] font-semibold uppercase tracking-[0.24em] mb-5 drop-shadow-sm">
             Professional Detailing Services
           </p>
-          <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight mb-6">
-            Premium Detailing, Paint Correction &amp; Ceramic Coating
+          <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-extrabold text-white leading-tight mb-6 drop-shadow-md">
+            Detailing &amp; Protection Services
           </h1>
-          <p className="text-zinc-400 text-lg leading-relaxed mb-10">
-            Restore, protect, and maintain your vehicle to a higher standard.
+          <p className="text-zinc-300 text-base sm:text-lg leading-relaxed max-w-2xl mx-auto mb-10 drop-shadow-sm">
+            Professional mobile detailing, paint correction, and ceramic coating
+            services tailored to restore, protect, and maintain your vehicle.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <a
-              href="#services"
-              className="border border-zinc-600 hover:border-accent text-zinc-300 hover:text-white font-semibold px-8 py-3 rounded-lg transition-all duration-200"
-            >
-              View Services
-            </a>
             <Link
               href="/book"
-              className="bg-accent hover:bg-accent-hover text-white font-semibold px-8 py-3 rounded-lg shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-200"
+              className="bg-accent hover:bg-accent-hover text-white font-semibold px-10 py-3 rounded-lg shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-200"
             >
-              Get a Quote
+              Book Now
+            </Link>
+            <Link
+              href="/services/interior-detail"
+              className="bg-white/10 backdrop-blur-sm border border-white/30 text-white hover:bg-white/20 font-semibold px-10 py-3 rounded-lg transition-all duration-200"
+            >
+              View Gallery
             </Link>
           </div>
         </FadeUp>
