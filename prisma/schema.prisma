@@ -115,9 +115,11 @@ model SocialAgentRun {
   weekEndDate   DateTime
   postsTarget   Int                  @default(3)
   reelsTarget   Int                  @default(2)
-  draftsCreated Int                  @default(0)
-  mediaReviewed Int                  @default(0)
-  startedAt     DateTime?
+  draftsCreated  Int                  @default(0)
+  postsGenerated Int                  @default(0)
+  reelsGenerated Int                  @default(0)
+  mediaReviewed  Int                  @default(0)
+  startedAt      DateTime?
   completedAt   DateTime?
   errorMessage  String?
   createdAt     DateTime             @default(now())
