@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import ImageComparisonSlider from "@/components/ui/image-comparison-slider-horizontal";
 
 export interface GalleryPhoto {
   id: string;
@@ -18,6 +19,13 @@ interface GalleryGridProps {
   photos: GalleryPhoto[];
 }
 
+interface ComparisonPair {
+  before: GalleryPhoto;
+  after: GalleryPhoto;
+  title: string;
+  caption: string | null;
+}
+
 function getLabelStyle(label: string | null): { cls: string; text: string } | null {
   if (!label) return null;
   const lower = label.toLowerCase();
@@ -26,6 +34,40 @@ function getLabelStyle(label: string | null): { cls: string; text: string } | nu
   if (lower === "after")
     return { cls: "bg-accent/20 text-accent-light border border-accent/50 shadow-[0_0_10px_rgba(66,109,182,0.3)]", text: label };
   return { cls: "bg-black/70 text-white border border-white/10", text: label };
+}
+
+function buildGroups(photos: GalleryPhoto[]): { pairs: ComparisonPair[]; singles: GalleryPhoto[] } {
+  const groups = new Map<string, GalleryPhoto[]>();
+
+  for (const photo of photos) {
+    const key = photo.title.trim().toLowerCase();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(photo);
+  }
+
+  const pairs: ComparisonPair[] = [];
+  const singles: GalleryPhoto[] = [];
+
+  for (const group of Array.from(groups.values())) {
+    const before = group.find((p) => p.label?.toLowerCase() === "before");
+    const after = group.find((p) => p.label?.toLowerCase() === "after");
+
+    if (before && after) {
+      pairs.push({
+        before,
+        after,
+        title: before.title,
+        caption: before.caption ?? after.caption,
+      });
+      for (const p of group) {
+        if (p.id !== before.id && p.id !== after.id) singles.push(p);
+      }
+    } else {
+      singles.push(...group);
+    }
+  }
+
+  return { pairs, singles };
 }
 
 export default function GalleryGrid({ photos }: GalleryGridProps) {
@@ -37,14 +79,16 @@ export default function GalleryGrid({ photos }: GalleryGridProps) {
     return 0;
   });
 
+  const { pairs, singles } = buildGroups(sorted);
+
   const close = useCallback(() => setActiveIndex(null), []);
   const prev = useCallback(
-    () => setActiveIndex((i) => (i === null ? null : (i - 1 + sorted.length) % sorted.length)),
-    [sorted.length]
+    () => setActiveIndex((i) => (i === null ? null : (i - 1 + singles.length) % singles.length)),
+    [singles.length]
   );
   const next = useCallback(
-    () => setActiveIndex((i) => (i === null ? null : (i + 1) % sorted.length)),
-    [sorted.length]
+    () => setActiveIndex((i) => (i === null ? null : (i + 1) % singles.length)),
+    [singles.length]
   );
 
   useEffect(() => {
@@ -58,7 +102,6 @@ export default function GalleryGrid({ photos }: GalleryGridProps) {
     return () => window.removeEventListener("keydown", handler);
   }, [activeIndex, close, prev, next]);
 
-  // Prevent body scroll when lightbox is open
   useEffect(() => {
     document.body.style.overflow = activeIndex !== null ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
@@ -74,56 +117,81 @@ export default function GalleryGrid({ photos }: GalleryGridProps) {
 
   return (
     <>
-      {/* Masonry grid */}
-      <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 [column-fill:_balance]">
-        {sorted.map((photo, i) => {
-          const label = getLabelStyle(photo.label);
-          return (
-            <div
-              key={photo.id}
-              onClick={() => setActiveIndex(i)}
-              className="group relative break-inside-avoid mb-4 rounded-xl overflow-hidden bg-zinc-900 cursor-zoom-in block"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={photo.imageUrl}
-                alt={photo.title}
-                className="w-full h-auto block transition-transform duration-700 ease-out group-hover:scale-[1.03]"
-                loading={i < 6 ? "eager" : "lazy"}
+      {/* Before & After comparison sliders */}
+      {pairs.length > 0 && (
+        <div className="mb-14">
+          <p className="text-zinc-500 text-xs font-semibold uppercase tracking-[0.2em] mb-6">
+            Before &amp; After
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {pairs.map(({ before, after, title, caption }) => (
+              <ImageComparisonSlider
+                key={`${before.id}-${after.id}`}
+                beforeSrc={before.imageUrl}
+                afterSrc={after.imageUrl}
+                title={title}
+                caption={caption ?? undefined}
               />
+            ))}
+          </div>
+        </div>
+      )}
 
-              {/* Hover overlay */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      {/* Singles masonry */}
+      {singles.length > 0 && (
+        <>
+          {pairs.length > 0 && (
+            <p className="text-zinc-500 text-xs font-semibold uppercase tracking-[0.2em] mb-6">
+              Gallery
+            </p>
+          )}
+          <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 [column-fill:_balance]">
+            {singles.map((photo, i) => {
+              const label = getLabelStyle(photo.label);
+              return (
+                <div
+                  key={photo.id}
+                  onClick={() => setActiveIndex(i)}
+                  className="group relative break-inside-avoid mb-4 rounded-xl overflow-hidden bg-zinc-900 cursor-zoom-in block"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photo.imageUrl}
+                    alt={photo.title}
+                    className="w-full h-auto block transition-transform duration-700 ease-out group-hover:scale-[1.03]"
+                    loading={i < 6 ? "eager" : "lazy"}
+                  />
 
-              {/* Before/After label */}
-              {label && (
-                <span className={`absolute top-3 right-3 text-[11px] font-semibold px-2.5 py-1 rounded-full backdrop-blur-sm ${label.cls}`}>
-                  {label.text}
-                </span>
-              )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-              {/* Featured badge */}
-              {photo.isFeatured && (
-                <span className="absolute top-3 left-3 bg-accent/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full tracking-widest uppercase backdrop-blur-sm">
-                  Featured
-                </span>
-              )}
+                  {label && (
+                    <span className={`absolute top-3 right-3 text-[11px] font-semibold px-2.5 py-1 rounded-full backdrop-blur-sm ${label.cls}`}>
+                      {label.text}
+                    </span>
+                  )}
 
-              {/* Caption on hover */}
-              <div className="absolute inset-x-0 bottom-0 p-4 translate-y-1 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
-                <p className="text-white font-semibold text-sm leading-snug">{photo.title}</p>
-                {photo.caption && (
-                  <p className="text-zinc-400 text-xs mt-0.5 leading-relaxed">{photo.caption}</p>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+                  {photo.isFeatured && (
+                    <span className="absolute top-3 left-3 bg-accent/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full tracking-widest uppercase backdrop-blur-sm">
+                      Featured
+                    </span>
+                  )}
 
-      {/* Lightbox */}
+                  <div className="absolute inset-x-0 bottom-0 p-4 translate-y-1 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
+                    <p className="text-white font-semibold text-sm leading-snug">{photo.title}</p>
+                    {photo.caption && (
+                      <p className="text-zinc-400 text-xs mt-0.5 leading-relaxed">{photo.caption}</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Lightbox (singles only) */}
       <AnimatePresence>
-        {activeIndex !== null && (
+        {activeIndex !== null && singles[activeIndex] && (
           <motion.div
             className="fixed inset-0 z-50 flex items-center justify-center"
             initial={{ opacity: 0 }}
@@ -134,10 +202,8 @@ export default function GalleryGrid({ photos }: GalleryGridProps) {
             aria-modal="true"
             role="dialog"
           >
-            {/* Backdrop */}
             <div className="absolute inset-0 bg-black/96 backdrop-blur-sm" />
 
-            {/* Close */}
             <button
               onClick={close}
               className="absolute top-5 right-5 z-20 text-zinc-500 hover:text-white transition-colors p-1"
@@ -148,13 +214,11 @@ export default function GalleryGrid({ photos }: GalleryGridProps) {
               </svg>
             </button>
 
-            {/* Counter */}
             <div className="absolute top-5 left-1/2 -translate-x-1/2 z-20 text-zinc-600 text-xs tracking-widest font-medium select-none">
-              {activeIndex + 1} / {sorted.length}
+              {activeIndex + 1} / {singles.length}
             </div>
 
-            {/* Prev */}
-            {sorted.length > 1 && (
+            {singles.length > 1 && (
               <button
                 onClick={(e) => { e.stopPropagation(); prev(); }}
                 className="absolute left-3 md:left-6 z-20 text-zinc-500 hover:text-white transition-colors p-3"
@@ -166,8 +230,7 @@ export default function GalleryGrid({ photos }: GalleryGridProps) {
               </button>
             )}
 
-            {/* Next */}
-            {sorted.length > 1 && (
+            {singles.length > 1 && (
               <button
                 onClick={(e) => { e.stopPropagation(); next(); }}
                 className="absolute right-3 md:right-6 z-20 text-zinc-500 hover:text-white transition-colors p-3"
@@ -179,7 +242,6 @@ export default function GalleryGrid({ photos }: GalleryGridProps) {
               </button>
             )}
 
-            {/* Image + meta */}
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeIndex}
@@ -192,23 +254,22 @@ export default function GalleryGrid({ photos }: GalleryGridProps) {
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={sorted[activeIndex].imageUrl}
-                  alt={sorted[activeIndex].title}
+                  src={singles[activeIndex].imageUrl}
+                  alt={singles[activeIndex].title}
                   className="max-h-[76vh] max-w-full object-contain rounded-lg shadow-2xl"
                 />
 
-                {/* Meta */}
                 <div className="text-center max-w-lg px-4">
                   <p className="text-white font-semibold text-base leading-snug">
-                    {sorted[activeIndex].title}
+                    {singles[activeIndex].title}
                   </p>
-                  {sorted[activeIndex].caption && (
+                  {singles[activeIndex].caption && (
                     <p className="text-zinc-500 text-sm mt-1 leading-relaxed">
-                      {sorted[activeIndex].caption}
+                      {singles[activeIndex].caption}
                     </p>
                   )}
-                  {sorted[activeIndex].label && (() => {
-                    const ls = getLabelStyle(sorted[activeIndex].label);
+                  {singles[activeIndex].label && (() => {
+                    const ls = getLabelStyle(singles[activeIndex].label);
                     return ls ? (
                       <span className={`inline-block mt-2.5 text-[11px] font-semibold px-3 py-1 rounded-full ${ls.cls}`}>
                         {ls.text}

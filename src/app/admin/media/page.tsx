@@ -35,7 +35,7 @@ export default function MediaPage() {
   const titleRef = useRef<HTMLInputElement>(null);
   const captionRef = useRef<HTMLInputElement>(null);
   const categoryRef = useRef<HTMLSelectElement>(null);
-  const labelRef = useRef<HTMLInputElement>(null);
+  const labelRef = useRef<HTMLSelectElement>(null);
   const isFeaturedRef = useRef<HTMLInputElement>(null);
   const displayOrderRef = useRef<HTMLInputElement>(null);
 
@@ -69,7 +69,8 @@ export default function MediaPage() {
     formData.append("title", titleRef.current?.value ?? "");
     formData.append("caption", captionRef.current?.value ?? "");
     formData.append("category", categoryRef.current?.value ?? "");
-    formData.append("label", labelRef.current?.value ?? "");
+    const labelVal = labelRef.current?.value ?? "";
+    formData.append("label", labelVal === "none" ? "" : labelVal);
     formData.append("isFeatured", isFeaturedRef.current?.checked ? "true" : "false");
     formData.append("displayOrder", displayOrderRef.current?.value ?? "0");
 
@@ -84,7 +85,7 @@ export default function MediaPage() {
         if (fileRef.current) fileRef.current.value = "";
         if (titleRef.current) titleRef.current.value = "";
         if (captionRef.current) captionRef.current.value = "";
-        if (labelRef.current) labelRef.current.value = "";
+        if (labelRef.current) labelRef.current.value = "none";
         if (isFeaturedRef.current) isFeaturedRef.current.checked = false;
         if (displayOrderRef.current) displayOrderRef.current.value = "0";
         setPreview(null);
@@ -179,12 +180,19 @@ export default function MediaPage() {
             </div>
             <div>
               <label className="block text-xs text-gray-400 mb-1">Label</label>
-              <input
+              <select
                 ref={labelRef}
-                type="text"
-                placeholder="e.g. Before / After"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-red-500"
-              />
+                defaultValue="none"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500"
+              >
+                <option value="none">— none —</option>
+                <option value="before">Before</option>
+                <option value="after">After</option>
+                <option value="interior">Interior</option>
+                <option value="exterior">Exterior</option>
+                <option value="detail">Detail</option>
+                <option value="coating">Coating</option>
+              </select>
             </div>
           </div>
 
