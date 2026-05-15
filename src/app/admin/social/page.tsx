@@ -4,6 +4,7 @@ import type {
   SocialContentStatus,
   SocialContentType,
 } from "@prisma/client";
+import MediaIntelligencePanel from "@/components/MediaIntelligencePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -137,7 +138,7 @@ function EmptyState({
 
 export default async function SocialPage() {
   const [photos, drafts, trends, latestRun, settings] = await Promise.all([
-    prisma.sitePhoto.findMany({ orderBy: { createdAt: "desc" }, take: 12 }),
+    prisma.sitePhoto.findMany({ orderBy: { createdAt: "desc" } }),
     prisma.socialContentDraft.findMany({
       where: { status: { not: "ARCHIVED" } },
       orderBy: { createdAt: "desc" },
@@ -166,14 +167,15 @@ export default async function SocialPage() {
   const weeklyReelTarget = settings?.weeklyReelTarget ?? 2;
 
   const navItems = [
-    { id: "overview",    label: "Overview" },
-    { id: "runs",        label: "Agent Runs" },
-    { id: "drafts",      label: "Draft Posts" },
-    { id: "reels",       label: "Draft Reels" },
-    { id: "media-picks", label: "Media Picks" },
-    { id: "trends",      label: "Trend Research" },
-    { id: "weekly-plan", label: "Weekly Plan" },
-    { id: "settings",   label: "Settings" },
+    { id: "overview",           label: "Overview" },
+    { id: "runs",               label: "Agent Runs" },
+    { id: "drafts",             label: "Draft Posts" },
+    { id: "reels",              label: "Draft Reels" },
+    { id: "media-picks",        label: "Media Picks" },
+    { id: "media-intelligence", label: "Media Intelligence" },
+    { id: "trends",             label: "Trend Research" },
+    { id: "weekly-plan",        label: "Weekly Plan" },
+    { id: "settings",           label: "Settings" },
   ];
 
   return (
@@ -232,7 +234,7 @@ export default async function SocialPage() {
           <StatCard
             label="Available Media"
             value={photos.length}
-            sub="Photos in library"
+            sub={`${photos.filter((p) => p.isSocialReady).length} social ready`}
           />
         </div>
       </div>
@@ -490,7 +492,7 @@ export default async function SocialPage() {
       ) : (
         <>
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-            {photos.map((photo) => (
+            {photos.slice(0, 12).map((photo) => (
               <div
                 key={photo.id}
                 className="relative aspect-square rounded-lg overflow-hidden bg-gray-800 group"
@@ -506,6 +508,11 @@ export default async function SocialPage() {
                     FEAT
                   </span>
                 )}
+                {photo.isSocialReady && (
+                  <span className="absolute top-1.5 right-1.5 bg-green-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+                    ✓
+                  </span>
+                )}
                 {photo.label && (
                   <span className="absolute bottom-1.5 right-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-black/70 text-gray-300">
                     {photo.label}
@@ -515,8 +522,15 @@ export default async function SocialPage() {
             ))}
           </div>
           <p className="text-xs text-gray-600 mt-3">
-            Showing {photos.length} most recent photo
+            Showing {Math.min(photos.length, 12)} of {photos.length} most recent photo
             {photos.length !== 1 ? "s" : ""}.{" "}
+            <a
+              href="#media-intelligence"
+              className="text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              Score &amp; review all media ↓
+            </a>
+            {" · "}
             <a
               href="/admin/media"
               className="text-gray-500 hover:text-gray-300 transition-colors"
@@ -525,6 +539,63 @@ export default async function SocialPage() {
             </a>
           </p>
         </>
+      )}
+
+      {/* ── Media Intelligence ───────────────────────────────────────────── */}
+      <SectionHeader
+        id="media-intelligence"
+        eyebrow="Content Strategy"
+        title="Media Intelligence"
+      />
+
+      <p className="text-xs text-gray-500 mb-6 leading-relaxed max-w-2xl">
+        Organize and score uploaded media so the agent can choose stronger content
+        for future posts and reels. Score each photo, flag candidates, and add
+        classification tags — the agent will use this data to make smarter
+        weekly selections.
+      </p>
+
+      {photos.length === 0 ? (
+        <EmptyState
+          icon={
+            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          }
+          title="No media to score yet"
+          body="Upload photos via the Media Manager, then return here to score and classify them for the social agent."
+        />
+      ) : (
+        <MediaIntelligencePanel
+          photos={photos.map((p) => ({
+            id:                    p.id,
+            title:                 p.title,
+            imageUrl:              p.imageUrl,
+            category:              p.category,
+            label:                 p.label,
+            caption:               p.caption,
+            isFeatured:            p.isFeatured,
+            displayOrder:          p.displayOrder,
+            createdAt:             p.createdAt.toISOString(),
+            socialTitle:           p.socialTitle,
+            socialNotes:           p.socialNotes,
+            contentScore:          p.contentScore,
+            qualityScore:          p.qualityScore,
+            marketingScore:        p.marketingScore,
+            isSocialReady:         p.isSocialReady,
+            isReelCandidate:       p.isReelCandidate,
+            isPostCandidate:       p.isPostCandidate,
+            isBeforeAfterCandidate: p.isBeforeAfterCandidate,
+            isFavoriteForSocial:   p.isFavoriteForSocial,
+            contentTags:           p.contentTags,
+            serviceType:           p.serviceType,
+            visualCategory:        p.visualCategory,
+            contentAngle:          p.contentAngle,
+            seasonalRelevance:     p.seasonalRelevance,
+            lastReviewedForSocial: p.lastReviewedForSocial?.toISOString() ?? null,
+            reviewedByAgent:       p.reviewedByAgent,
+          }))}
+        />
       )}
 
       {/* ── Trend Research ───────────────────────────────────────────────── */}

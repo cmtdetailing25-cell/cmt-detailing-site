@@ -84,6 +84,25 @@ model SitePhoto {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // ─── Media Intelligence ───────────────────────────────────────────────────
+  socialTitle            String?
+  socialNotes            String?
+  contentScore           Int       @default(0)
+  qualityScore           Int       @default(0)
+  marketingScore         Int       @default(0)
+  isSocialReady          Boolean   @default(false)
+  isReelCandidate        Boolean   @default(false)
+  isPostCandidate        Boolean   @default(false)
+  isBeforeAfterCandidate Boolean   @default(false)
+  isFavoriteForSocial    Boolean   @default(false)
+  contentTags            String[]  @default([])
+  serviceType            String?
+  visualCategory         String?
+  contentAngle           String?
+  seasonalRelevance      String?
+  lastReviewedForSocial  DateTime?
+  reviewedByAgent        Boolean   @default(false)
+
   socialMedia SocialContentMedia[]
 }
 
