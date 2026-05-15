@@ -5,6 +5,15 @@ import imageCompression from "browser-image-compression";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type SortKey =
+  | "recent"
+  | "oldest"
+  | "order-asc"
+  | "order-desc"
+  | "title-az"
+  | "title-za"
+  | "featured";
+
 interface SitePhoto {
   id: string;
   title: string;
@@ -62,6 +71,16 @@ const CATEGORIES = [
 
 const LABEL_OPTIONS = ["before", "after", "interior", "exterior", "detail", "coating"];
 
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "recent",     label: "Most Recent" },
+  { value: "oldest",     label: "Oldest First" },
+  { value: "order-asc",  label: "Display Order ↑" },
+  { value: "order-desc", label: "Display Order ↓" },
+  { value: "title-az",   label: "Title A–Z" },
+  { value: "title-za",   label: "Title Z–A" },
+  { value: "featured",   label: "Featured First" },
+];
+
 const CAT_FILTERS = ["all", ...CATEGORIES];
 const LABEL_FILTERS = ["all", "none", ...LABEL_OPTIONS];
 
@@ -99,6 +118,28 @@ function fmtSize(bytes: number): string {
 
 function savingsPct(original: number, compressed: number): number {
   return Math.round((1 - compressed / original) * 100);
+}
+
+function sortPhotos(arr: SitePhoto[], key: SortKey): SitePhoto[] {
+  return [...arr].sort((a, b) => {
+    switch (key) {
+      case "recent":
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      case "oldest":
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      case "order-asc":
+        return a.displayOrder - b.displayOrder;
+      case "order-desc":
+        return b.displayOrder - a.displayOrder;
+      case "title-az":
+        return a.title.localeCompare(b.title);
+      case "title-za":
+        return b.title.localeCompare(a.title);
+      case "featured":
+        if (a.isFeatured !== b.isFeatured) return a.isFeatured ? -1 : 1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    }
+  });
 }
 
 function isAcceptedType(file: File): boolean {
@@ -380,9 +421,10 @@ export default function MediaPage() {
   const [photos, setPhotos] = useState<SitePhoto[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filters
+  // Filters + sort
   const [catFilter, setCatFilter] = useState("all");
   const [labelFilter, setLabelFilter] = useState("all");
+  const [sortBy, setSortBy] = useState<SortKey>("recent");
 
   // Bulk upload
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -415,6 +457,31 @@ export default function MediaPage() {
   useEffect(() => {
     fetchPhotos();
   }, [fetchPhotos]);
+
+  // Restore filter/sort preferences from localStorage on mount
+  useEffect(() => {
+    const cat  = localStorage.getItem("cmt_media_cat");
+    const lbl  = localStorage.getItem("cmt_media_label");
+    const sort = localStorage.getItem("cmt_media_sort");
+    if (cat) setCatFilter(cat);
+    if (lbl) setLabelFilter(lbl);
+    if (sort && SORT_OPTIONS.some((o) => o.value === sort)) setSortBy(sort as SortKey);
+  }, []);
+
+  function handleSetCat(value: string) {
+    setCatFilter(value);
+    localStorage.setItem("cmt_media_cat", value);
+  }
+
+  function handleSetLabel(value: string) {
+    setLabelFilter(value);
+    localStorage.setItem("cmt_media_label", value);
+  }
+
+  function handleSetSort(value: SortKey) {
+    setSortBy(value);
+    localStorage.setItem("cmt_media_sort", value);
+  }
 
   // ── File selection ───────────────────────────────────────────────────────
 
@@ -639,6 +706,8 @@ export default function MediaPage() {
     return true;
   });
 
+  const displayed = sortPhotos(filtered, sortBy);
+
   const uploadedCt = fileEntries.filter((fe) => fe.status === "uploaded").length;
   const failedCt = fileEntries.filter((fe) => fe.status === "failed").length;
   const optimizedCt = fileEntries.filter(
@@ -861,15 +930,31 @@ export default function MediaPage() {
 
       {/* ── Library ───────────────────────────────────────────────────────── */}
       <div>
-        <div className="flex items-baseline gap-2 mb-5">
-          <h2 className="text-lg font-semibold text-white">Library</h2>
-          {!loading && (
-            <span className="text-gray-500 text-sm">
-              {filtered.length !== photos.length
-                ? `${filtered.length} of ${photos.length}`
-                : `${photos.length} photo${photos.length !== 1 ? "s" : ""}`}
-            </span>
-          )}
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
+          <div className="flex items-baseline gap-2 flex-1">
+            <h2 className="text-lg font-semibold text-white">Library</h2>
+            {!loading && (
+              <span className="text-gray-500 text-sm">
+                {filtered.length !== photos.length
+                  ? `${filtered.length} of ${photos.length}`
+                  : `${photos.length} photo${photos.length !== 1 ? "s" : ""}`}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <label className="text-[10px] text-gray-500 uppercase tracking-widest whitespace-nowrap">
+              Sort
+            </label>
+            <select
+              value={sortBy}
+              onChange={(e) => handleSetSort(e.target.value as SortKey)}
+              className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-red-500 min-w-[148px]"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Category filter */}
@@ -879,7 +964,7 @@ export default function MediaPage() {
             {CAT_FILTERS.map((c) => (
               <button
                 key={c}
-                onClick={() => setCatFilter(c)}
+                onClick={() => handleSetCat(c)}
                 className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
                   catFilter === c
                     ? "bg-red-600 text-white"
@@ -899,7 +984,7 @@ export default function MediaPage() {
             {LABEL_FILTERS.map((l) => (
               <button
                 key={l}
-                onClick={() => setLabelFilter(l)}
+                onClick={() => handleSetLabel(l)}
                 className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
                   labelFilter === l
                     ? "bg-red-600 text-white"
@@ -923,7 +1008,7 @@ export default function MediaPage() {
           </p>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {filtered.map((photo) => (
+            {displayed.map((photo) => (
               <PhotoCard
                 key={photo.id}
                 photo={photo}
