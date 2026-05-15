@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import imageCompression from "browser-image-compression";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,12 +17,22 @@ interface SitePhoto {
   createdAt: string;
 }
 
-type UploadStatus = "pending" | "uploading" | "done" | "failed";
+type FileStatus =
+  | "queued"
+  | "compressing"
+  | "compressed"
+  | "already-optimized"
+  | "uploading"
+  | "uploaded"
+  | "failed";
 
 interface FileEntry {
   file: File;
-  status: UploadStatus;
+  compressed: File | null;
+  status: FileStatus;
   error?: string;
+  originalSize: number;
+  compressedSize?: number;
 }
 
 interface EditDraft {
@@ -54,6 +65,10 @@ const LABEL_OPTIONS = ["before", "after", "interior", "exterior", "detail", "coa
 const CAT_FILTERS = ["all", ...CATEGORIES];
 const LABEL_FILTERS = ["all", "none", ...LABEL_OPTIONS];
 
+// Accepted MIME types (HEIC, TIFF, GIF, RAW are explicitly rejected)
+const ACCEPTED_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+const ACCEPTED_EXT = new Set(["jpg", "jpeg", "png", "webp"]);
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function cleanFilename(name: string): string {
@@ -77,63 +92,88 @@ function fmtLabel(l: string): string {
   return l.charAt(0).toUpperCase() + l.slice(1);
 }
 
+function fmtSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function savingsPct(original: number, compressed: number): number {
+  return Math.round((1 - compressed / original) * 100);
+}
+
+function isAcceptedType(file: File): boolean {
+  const mime = file.type.toLowerCase();
+  const ext = (file.name.split(".").pop() ?? "").toLowerCase();
+  return ACCEPTED_MIME.has(mime) || ACCEPTED_EXT.has(ext);
+}
+
+function formatRejectionReason(file: File): string {
+  const ext = (file.name.split(".").pop() ?? "").toLowerCase();
+  const reasons: Record<string, string> = {
+    heic: "HEIC not supported — convert to JPG first",
+    heif: "HEIF not supported — convert to JPG first",
+    tiff: "TIFF not supported",
+    tif: "TIFF not supported",
+    gif: "GIF not supported",
+    raw: "RAW not supported — convert to JPG first",
+    cr2: "RAW not supported",
+    nef: "RAW not supported",
+    dng: "RAW not supported",
+    arw: "RAW not supported",
+  };
+  return reasons[ext] ?? `Unsupported format (.${ext || file.type})`;
+}
+
 // ─── StatusDot ────────────────────────────────────────────────────────────────
 
-function StatusDot({ status }: { status: UploadStatus }) {
-  if (status === "uploading") {
-    return (
-      <svg
-        className="w-3.5 h-3.5 text-yellow-400 animate-spin shrink-0"
-        viewBox="0 0 24 24"
-        fill="none"
-      >
-        <circle
-          className="opacity-25"
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          strokeWidth="4"
-        />
-        <path
-          className="opacity-75"
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-        />
-      </svg>
-    );
+function Spinner({ color }: { color: string }) {
+  return (
+    <svg className={`w-3.5 h-3.5 ${color} animate-spin shrink-0`} viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  );
+}
+
+function StatusDot({ status }: { status: FileStatus }) {
+  switch (status) {
+    case "queued":
+      return <span className="w-2 h-2 rounded-full bg-gray-600 shrink-0 mt-0.5" />;
+    case "compressing":
+      return <Spinner color="text-yellow-400" />;
+    case "compressed":
+      return <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0 mt-0.5" />;
+    case "already-optimized":
+      return <span className="w-2 h-2 rounded-full bg-gray-400 shrink-0 mt-0.5" />;
+    case "uploading":
+      return <Spinner color="text-blue-400" />;
+    case "uploaded":
+      return (
+        <svg className="w-3.5 h-3.5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      );
+    case "failed":
+      return (
+        <svg className="w-3.5 h-3.5 text-red-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      );
   }
-  if (status === "done") {
-    return (
-      <svg
-        className="w-3.5 h-3.5 text-green-400 shrink-0"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-      </svg>
-    );
-  }
-  if (status === "failed") {
-    return (
-      <svg
-        className="w-3.5 h-3.5 text-red-400 shrink-0"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M6 18L18 6M6 6l12 12"
-        />
-      </svg>
-    );
-  }
-  // pending
-  return <span className="w-2 h-2 rounded-full bg-gray-600 shrink-0 mt-0.5" />;
+}
+
+function StatusLabel({ status }: { status: FileStatus }) {
+  const map: Record<FileStatus, { text: string; cls: string }> = {
+    queued:          { text: "Queued",           cls: "text-gray-500" },
+    compressing:     { text: "Compressing…",     cls: "text-yellow-400" },
+    compressed:      { text: "Compressed",       cls: "text-blue-400" },
+    "already-optimized": { text: "Already optimized", cls: "text-gray-400" },
+    uploading:       { text: "Uploading…",       cls: "text-blue-400" },
+    uploaded:        { text: "Uploaded",         cls: "text-green-400" },
+    failed:          { text: "Failed",           cls: "text-red-400" },
+  };
+  const { text, cls } = map[status];
+  return <span className={`text-[10px] font-medium shrink-0 ${cls}`}>{text}</span>;
 }
 
 // ─── PhotoCard ────────────────────────────────────────────────────────────────
@@ -169,14 +209,9 @@ function PhotoCard({
         isEditing ? "border-2 border-red-600/60" : "border border-gray-800"
       }`}
     >
-      {/* Image */}
       <div className="relative aspect-square bg-gray-800">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={photo.imageUrl}
-          alt={photo.title}
-          className="w-full h-full object-cover"
-        />
+        <img src={photo.imageUrl} alt={photo.title} className="w-full h-full object-cover" />
         {photo.isFeatured && (
           <span className="absolute top-2 left-2 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
             FEAT
@@ -192,27 +227,19 @@ function PhotoCard({
         )}
       </div>
 
-      {/* Body */}
       {isEditing ? (
         <div className="p-3 space-y-2">
-          {/* Title */}
           <div>
-            <label className="block text-[10px] text-gray-500 mb-0.5 uppercase tracking-wide">
-              Title
-            </label>
+            <label className="block text-[10px] text-gray-500 mb-0.5 uppercase tracking-wide">Title</label>
             <input
               value={draft.title}
               onChange={(e) => onChange("title", e.target.value)}
               disabled={saving}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-red-500 disabled:opacity-50"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-red-500 disabled:opacity-50"
             />
           </div>
-
-          {/* Caption */}
           <div>
-            <label className="block text-[10px] text-gray-500 mb-0.5 uppercase tracking-wide">
-              Caption
-            </label>
+            <label className="block text-[10px] text-gray-500 mb-0.5 uppercase tracking-wide">Caption</label>
             <input
               value={draft.caption}
               onChange={(e) => onChange("caption", e.target.value)}
@@ -221,13 +248,9 @@ function PhotoCard({
               className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-red-500 disabled:opacity-50"
             />
           </div>
-
-          {/* Category + Label */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] text-gray-500 mb-0.5 uppercase tracking-wide">
-                Category
-              </label>
+              <label className="block text-[10px] text-gray-500 mb-0.5 uppercase tracking-wide">Category</label>
               <select
                 value={draft.category}
                 onChange={(e) => onChange("category", e.target.value)}
@@ -235,16 +258,12 @@ function PhotoCard({
                 className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-red-500 disabled:opacity-50"
               >
                 {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {fmtCat(c)}
-                  </option>
+                  <option key={c} value={c}>{fmtCat(c)}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-[10px] text-gray-500 mb-0.5 uppercase tracking-wide">
-                Label
-              </label>
+              <label className="block text-[10px] text-gray-500 mb-0.5 uppercase tracking-wide">Label</label>
               <select
                 value={draft.label}
                 onChange={(e) => onChange("label", e.target.value)}
@@ -253,27 +272,19 @@ function PhotoCard({
               >
                 <option value="none">— none —</option>
                 {LABEL_OPTIONS.map((l) => (
-                  <option key={l} value={l}>
-                    {l.charAt(0).toUpperCase() + l.slice(1)}
-                  </option>
+                  <option key={l} value={l}>{l.charAt(0).toUpperCase() + l.slice(1)}</option>
                 ))}
               </select>
             </div>
           </div>
-
-          {/* Order + Featured */}
           <div className="flex items-end gap-3">
             <div>
-              <label className="block text-[10px] text-gray-500 mb-0.5 uppercase tracking-wide">
-                Order
-              </label>
+              <label className="block text-[10px] text-gray-500 mb-0.5 uppercase tracking-wide">Order</label>
               <input
                 type="number"
                 min={0}
                 value={draft.displayOrder}
-                onChange={(e) =>
-                  onChange("displayOrder", parseInt(e.target.value, 10) || 0)
-                }
+                onChange={(e) => onChange("displayOrder", parseInt(e.target.value, 10) || 0)}
                 disabled={saving}
                 className="w-16 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-red-500 disabled:opacity-50"
               />
@@ -289,11 +300,7 @@ function PhotoCard({
               <span className="text-xs text-gray-300">Featured</span>
             </label>
           </div>
-
-          {saveError && (
-            <p className="text-red-400 text-xs">{saveError}</p>
-          )}
-
+          {saveError && <p className="text-red-400 text-xs">{saveError}</p>}
           <div className="flex gap-2 pt-1">
             <button
               onClick={onSave}
@@ -365,6 +372,9 @@ const DEFAULT_DRAFT: EditDraft = {
   displayOrder: 0,
 };
 
+// 10 % savings threshold — below this we call it "already optimized"
+const SAVINGS_THRESHOLD = 0.10;
+
 export default function MediaPage() {
   // Library
   const [photos, setPhotos] = useState<SitePhoto[]>([]);
@@ -406,28 +416,113 @@ export default function MediaPage() {
     fetchPhotos();
   }, [fetchPhotos]);
 
-  // ── Bulk upload ──────────────────────────────────────────────────────────
+  // ── File selection ───────────────────────────────────────────────────────
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
-    setFileEntries(files.map((f) => ({ file: f, status: "pending" })));
     setUploadError(null);
+    setFileEntries(
+      files.map((f) => {
+        if (!isAcceptedType(f)) {
+          return {
+            file: f,
+            compressed: null,
+            status: "failed" as FileStatus,
+            error: formatRejectionReason(f),
+            originalSize: f.size,
+          };
+        }
+        return {
+          file: f,
+          compressed: null,
+          status: "queued" as FileStatus,
+          originalSize: f.size,
+        };
+      })
+    );
   }
 
+  // ── Bulk compress + upload ───────────────────────────────────────────────
+
   async function handleBulkUpload() {
-    if (fileEntries.length === 0 || uploading) return;
+    if (uploading) return;
+    const processable = fileEntries.filter((fe) => fe.status !== "failed");
+    if (processable.length === 0) {
+      setUploadError("No supported files to upload.");
+      return;
+    }
+
     setUploading(true);
     setUploadError(null);
     let anyFailed = false;
 
     for (let i = 0; i < fileEntries.length; i++) {
+      // Skip files already failed at selection (unsupported format)
+      if (fileEntries[i].status === "failed") continue;
+
+      const originalFile = fileEntries[i].file;
+      const originalSize = fileEntries[i].originalSize;
+
+      // ── Step 1: Compress ──────────────────────────────────────────────
+
+      setFileEntries((prev) =>
+        prev.map((fe, idx) => (idx === i ? { ...fe, status: "compressing" } : fe))
+      );
+
+      let fileToUpload: File;
+      let compressedSize: number;
+      let newStatus: FileStatus;
+
+      try {
+        const result = await imageCompression(originalFile, {
+          maxWidthOrHeight: 2000,
+          initialQuality: 0.82,
+          fileType: "image/webp",
+          useWebWorker: true,
+        });
+
+        if (result.size >= originalSize) {
+          // Compression made it larger — upload original to avoid degradation
+          fileToUpload = originalFile;
+          compressedSize = originalSize;
+          newStatus = "already-optimized";
+        } else {
+          const pct = (originalSize - result.size) / originalSize;
+          newStatus = pct < SAVINGS_THRESHOLD ? "already-optimized" : "compressed";
+
+          // Rename to .webp so Vercel Blob gets a clean URL
+          const webpName = originalFile.name.replace(/\.[^.]+$/, ".webp");
+          fileToUpload = new File([result], webpName, { type: "image/webp" });
+          compressedSize = result.size;
+        }
+
+        setFileEntries((prev) =>
+          prev.map((fe, idx) =>
+            idx === i
+              ? { ...fe, status: newStatus, compressed: fileToUpload, compressedSize }
+              : fe
+          )
+        );
+      } catch {
+        anyFailed = true;
+        setFileEntries((prev) =>
+          prev.map((fe, idx) =>
+            idx === i ? { ...fe, status: "failed", error: "Compression failed" } : fe
+          )
+        );
+        continue;
+      }
+
+      // ── Step 2: Upload ────────────────────────────────────────────────
+
       setFileEntries((prev) =>
         prev.map((fe, idx) => (idx === i ? { ...fe, status: "uploading" } : fe))
       );
+
       try {
         const fd = new FormData();
-        fd.append("file", fileEntries[i].file);
-        fd.append("title", cleanFilename(fileEntries[i].file.name));
+        fd.append("file", fileToUpload);
+        fd.append("title", cleanFilename(originalFile.name));
         fd.append("caption", "");
         fd.append("category", defCategory);
         fd.append("label", defLabel === "none" ? "" : defLabel);
@@ -439,8 +534,9 @@ export default function MediaPage() {
           const data = await res.json();
           throw new Error(data.error ?? "Upload failed");
         }
+
         setFileEntries((prev) =>
-          prev.map((fe, idx) => (idx === i ? { ...fe, status: "done" } : fe))
+          prev.map((fe, idx) => (idx === i ? { ...fe, status: "uploaded" } : fe))
         );
       } catch (err) {
         anyFailed = true;
@@ -450,7 +546,7 @@ export default function MediaPage() {
               ? {
                   ...fe,
                   status: "failed",
-                  error: err instanceof Error ? err.message : "Failed",
+                  error: err instanceof Error ? err.message : "Upload failed",
                 }
               : fe
           )
@@ -459,7 +555,7 @@ export default function MediaPage() {
     }
 
     setUploading(false);
-    if (anyFailed) setUploadError("Some files failed — see list below.");
+    if (anyFailed) setUploadError("Some files failed — see details below.");
     await fetchPhotos();
   }
 
@@ -534,24 +630,26 @@ export default function MediaPage() {
     setDraft((prev) => ({ ...prev, [field]: value }));
   }
 
-  // ── Filtered photos ──────────────────────────────────────────────────────
+  // ── Computed values ──────────────────────────────────────────────────────
 
   const filtered = photos.filter((p) => {
     if (catFilter !== "all" && p.category !== catFilter) return false;
     if (labelFilter === "none" && p.label) return false;
-    if (
-      labelFilter !== "all" &&
-      labelFilter !== "none" &&
-      p.label !== labelFilter
-    )
-      return false;
+    if (labelFilter !== "all" && labelFilter !== "none" && p.label !== labelFilter) return false;
     return true;
   });
 
-  // ── Render ───────────────────────────────────────────────────────────────
-
-  const doneCt = fileEntries.filter((fe) => fe.status === "done").length;
+  const uploadedCt = fileEntries.filter((fe) => fe.status === "uploaded").length;
   const failedCt = fileEntries.filter((fe) => fe.status === "failed").length;
+  const optimizedCt = fileEntries.filter(
+    (fe) =>
+      fe.status === "uploaded" &&
+      fe.compressedSize !== undefined &&
+      fe.compressedSize < fe.originalSize * (1 - SAVINGS_THRESHOLD)
+  ).length;
+  const showSummary = !uploading && fileEntries.length > 0 && (uploadedCt > 0 || failedCt > 0);
+
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="p-6">
@@ -561,15 +659,36 @@ export default function MediaPage() {
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-5">
         <h2 className="text-base font-semibold text-white mb-4">Upload Photos</h2>
 
+        {/* Auto-optimization info card */}
+        <div className="flex items-start gap-2.5 bg-blue-950/25 border border-blue-800/30 rounded-lg px-4 py-3 mb-4">
+          <svg
+            className="w-4 h-4 text-blue-400 shrink-0 mt-0.5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <p className="text-xs text-blue-300/80 leading-relaxed">
+            Images are automatically optimized before upload for faster loading, better SEO, and
+            smoother galleries.
+          </p>
+        </div>
+
         {/* File picker */}
         <div className="mb-4">
           <label className="block text-xs text-gray-400 mb-1">
-            Select images — multiple files allowed
+            Select images — multiple files allowed (JPG, PNG, WebP)
           </label>
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
             multiple
             onChange={handleFileChange}
             disabled={uploading}
@@ -588,9 +707,7 @@ export default function MediaPage() {
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 disabled:opacity-50"
             >
               {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {fmtCat(c)}
-                </option>
+                <option key={c} value={c}>{fmtCat(c)}</option>
               ))}
             </select>
           </div>
@@ -604,16 +721,12 @@ export default function MediaPage() {
             >
               <option value="none">— none —</option>
               {LABEL_OPTIONS.map((l) => (
-                <option key={l} value={l}>
-                  {l.charAt(0).toUpperCase() + l.slice(1)}
-                </option>
+                <option key={l} value={l}>{l.charAt(0).toUpperCase() + l.slice(1)}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">
-              Starting Display Order
-            </label>
+            <label className="block text-xs text-gray-400 mb-1">Starting Display Order</label>
             <input
               type="number"
               min={0}
@@ -639,38 +752,69 @@ export default function MediaPage() {
 
         {/* File status list */}
         {fileEntries.length > 0 && (
-          <div className="mb-4 max-h-52 overflow-y-auto space-y-1 pr-1">
-            {fileEntries.map((fe, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg bg-gray-800/60"
-              >
-                <StatusDot status={fe.status} />
-                <span className="flex-1 text-xs text-gray-300 truncate">
-                  {fe.file.name}
-                </span>
-                <span className="text-[10px] text-gray-600 shrink-0">
-                  {(fe.file.size / 1024 / 1024).toFixed(1)} MB
-                </span>
-                {fe.status === "failed" && fe.error && (
-                  <span className="text-[10px] text-red-400 shrink-0 max-w-[100px] truncate">
-                    {fe.error}
+          <div className="mb-4 max-h-64 overflow-y-auto space-y-1 pr-1">
+            {fileEntries.map((fe, i) => {
+              const hasCompression =
+                fe.compressedSize !== undefined && fe.compressedSize < fe.originalSize;
+              const pct = hasCompression
+                ? savingsPct(fe.originalSize, fe.compressedSize!)
+                : 0;
+
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-gray-800/60"
+                >
+                  <StatusDot status={fe.status} />
+
+                  {/* Filename */}
+                  <span className="flex-1 text-xs text-gray-300 truncate min-w-0">
+                    {fe.file.name}
                   </span>
-                )}
-              </div>
-            ))}
+
+                  {/* Size info */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10px] text-gray-500">{fmtSize(fe.originalSize)}</span>
+
+                    {hasCompression && (
+                      <>
+                        <span className="text-[10px] text-gray-700">→</span>
+                        <span className="text-[10px] text-green-400 font-medium">
+                          {fmtSize(fe.compressedSize!)}
+                        </span>
+                        <span className="text-[10px] text-green-500 font-semibold">
+                          -{pct}%
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Status label */}
+                  <StatusLabel status={fe.status} />
+
+                  {/* Error text */}
+                  {fe.status === "failed" && fe.error && (
+                    <span className="text-[10px] text-red-400 shrink-0 max-w-[120px] truncate" title={fe.error}>
+                      {fe.error}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
-        {/* Summary line after upload finishes */}
-        {!uploading && fileEntries.length > 0 && (doneCt > 0 || failedCt > 0) && (
-          <p className="text-xs text-gray-500 mb-3">
-            {doneCt > 0 && (
-              <span className="text-green-400 font-medium">{doneCt} uploaded</span>
+        {/* Summary after upload */}
+        {showSummary && (
+          <p className="text-xs text-gray-500 mb-3 flex flex-wrap gap-x-2">
+            {uploadedCt > 0 && (
+              <span className="text-green-400 font-medium">{uploadedCt} uploaded</span>
             )}
-            {doneCt > 0 && failedCt > 0 && " · "}
             {failedCt > 0 && (
               <span className="text-red-400 font-medium">{failedCt} failed</span>
+            )}
+            {optimizedCt > 0 && (
+              <span className="text-blue-400 font-medium">{optimizedCt} optimized</span>
             )}
           </p>
         )}
@@ -684,7 +828,7 @@ export default function MediaPage() {
             className="bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors"
           >
             {uploading
-              ? "Uploading…"
+              ? "Processing…"
               : `Upload ${
                   fileEntries.length > 0
                     ? `${fileEntries.length} Photo${fileEntries.length !== 1 ? "s" : ""}`
@@ -708,13 +852,10 @@ export default function MediaPage() {
           Before / After Pairs
         </p>
         <p className="text-xs text-gray-500 leading-relaxed">
-          To create a comparison slider on the gallery page: upload two photos,
-          give them the{" "}
-          <span className="text-gray-300 font-medium">exact same Title</span>, set
-          one Label to{" "}
-          <span className="text-gray-300 font-medium">before</span> and the other
-          to <span className="text-gray-300 font-medium">after</span>. The gallery
-          pairs them automatically.
+          To create a comparison slider on the gallery page: upload two photos, give them the{" "}
+          <span className="text-gray-300 font-medium">exact same Title</span>, set one Label to{" "}
+          <span className="text-gray-300 font-medium">before</span> and the other to{" "}
+          <span className="text-gray-300 font-medium">after</span>. The gallery pairs them automatically.
         </p>
       </div>
 
@@ -733,9 +874,7 @@ export default function MediaPage() {
 
         {/* Category filter */}
         <div className="mb-3">
-          <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-1.5">
-            Category
-          </p>
+          <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-1.5">Category</p>
           <div className="flex flex-wrap gap-1.5">
             {CAT_FILTERS.map((c) => (
               <button
@@ -755,9 +894,7 @@ export default function MediaPage() {
 
         {/* Label filter */}
         <div className="mb-6">
-          <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-1.5">
-            Label
-          </p>
+          <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-1.5">Label</p>
           <div className="flex flex-wrap gap-1.5">
             {LABEL_FILTERS.map((l) => (
               <button
