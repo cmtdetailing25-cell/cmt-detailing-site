@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import type {
   SocialAgentRunStatus,
-  SocialContentStatus,
-  SocialContentType,
 } from "@prisma/client";
 import MediaIntelligencePanel from "@/components/MediaIntelligencePanel";
+import DraftGenerator from "@/components/DraftGenerator";
+import DraftSection from "@/components/DraftSection";
+import type { SerializedDraft } from "@/components/DraftSection";
 
 export const dynamic = "force-dynamic";
 
@@ -65,37 +66,6 @@ function AgentRunBadge({ status }: { status: SocialAgentRunStatus | null }) {
   );
 }
 
-function DraftStatusBadge({ status }: { status: SocialContentStatus }) {
-  const map: Record<SocialContentStatus, { label: string; cls: string }> = {
-    IDEA:           { label: "Idea",           cls: "bg-gray-800 text-gray-500" },
-    DRAFT:          { label: "Draft",          cls: "bg-gray-800 text-gray-400" },
-    NEEDS_APPROVAL: { label: "Needs Approval", cls: "bg-yellow-900/40 text-yellow-400" },
-    APPROVED:       { label: "Approved",       cls: "bg-green-900/40 text-green-400" },
-    SCHEDULED:      { label: "Scheduled",      cls: "bg-blue-900/30 text-blue-400" },
-    POSTED:         { label: "Posted",         cls: "bg-green-900/60 text-green-300" },
-    ARCHIVED:       { label: "Archived",       cls: "bg-gray-900 text-gray-600" },
-  };
-  const { label, cls } = map[status];
-  return (
-    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${cls}`}>
-      {label}
-    </span>
-  );
-}
-
-function DraftTypeBadge({ type }: { type: SocialContentType }) {
-  const cls =
-    type === "REEL"
-      ? "bg-violet-900/30 text-violet-400"
-      : type === "STORY"
-      ? "bg-blue-900/30 text-blue-400"
-      : "bg-gray-800 text-gray-400";
-  return (
-    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${cls}`}>
-      {type}
-    </span>
-  );
-}
 
 function SectionHeader({
   id,
@@ -142,10 +112,10 @@ export default async function SocialPage() {
     prisma.socialContentDraft.findMany({
       where: { status: { not: "ARCHIVED" } },
       orderBy: { createdAt: "desc" },
-      take: 20,
+      take: 50,
       include: {
         media: {
-          take: 1,
+          take: 3,
           orderBy: { sortOrder: "asc" },
           include: { sitePhoto: { select: { imageUrl: true, title: true } } },
         },
@@ -159,16 +129,77 @@ export default async function SocialPage() {
     prisma.socialAgentSettings.findFirst(),
   ]);
 
-  const postDrafts = drafts.filter((d) => d.type === "POST");
-  const reelDrafts = drafts.filter((d) => d.type === "REEL");
+  const postDrafts    = drafts.filter((d) => d.type === "POST");
+  const reelDrafts    = drafts.filter((d) => d.type === "REEL");
   const approvalDrafts = drafts.filter((d) => d.status === "NEEDS_APPROVAL");
 
   const weeklyPostTarget = settings?.weeklyPostTarget ?? 3;
   const weeklyReelTarget = settings?.weeklyReelTarget ?? 2;
 
+  function serializeDraft(d: typeof drafts[0]): SerializedDraft {
+    return {
+      id:          d.id,
+      type:        d.type,
+      status:      d.status,
+      source:      d.source,
+      title:       d.title,
+      caption:     d.caption,
+      hashtags:    d.hashtags,
+      hook:        d.hook,
+      notes:       d.notes,
+      generatedAt: d.generatedAt?.toISOString() ?? null,
+      createdAt:   d.createdAt.toISOString(),
+      media:       d.media.map((m) => ({
+        id:        m.id,
+        sitePhoto: m.sitePhoto,
+      })),
+    };
+  }
+
+  const serializedPostDrafts = postDrafts.map(serializeDraft);
+  const serializedReelDrafts = reelDrafts.map(serializeDraft);
+
+  const serializedSettings = settings
+    ? {
+        defaultHashtags: settings.defaultHashtags,
+        brandVoice:      settings.brandVoice,
+        approvalRequired: settings.approvalRequired,
+      }
+    : null;
+
+  const photosForClient = photos.map((p) => ({
+    id:                    p.id,
+    title:                 p.title,
+    imageUrl:              p.imageUrl,
+    category:              p.category,
+    label:                 p.label,
+    caption:               p.caption,
+    isFeatured:            p.isFeatured,
+    displayOrder:          p.displayOrder,
+    createdAt:             p.createdAt.toISOString(),
+    socialTitle:           p.socialTitle,
+    socialNotes:           p.socialNotes,
+    contentScore:          p.contentScore,
+    qualityScore:          p.qualityScore,
+    marketingScore:        p.marketingScore,
+    isSocialReady:         p.isSocialReady,
+    isReelCandidate:       p.isReelCandidate,
+    isPostCandidate:       p.isPostCandidate,
+    isBeforeAfterCandidate: p.isBeforeAfterCandidate,
+    isFavoriteForSocial:   p.isFavoriteForSocial,
+    contentTags:           p.contentTags,
+    serviceType:           p.serviceType,
+    visualCategory:        p.visualCategory,
+    contentAngle:          p.contentAngle,
+    seasonalRelevance:     p.seasonalRelevance,
+    lastReviewedForSocial: p.lastReviewedForSocial?.toISOString() ?? null,
+    reviewedByAgent:       p.reviewedByAgent,
+  }));
+
   const navItems = [
     { id: "overview",           label: "Overview" },
     { id: "runs",               label: "Agent Runs" },
+    { id: "draft-generator",    label: "Draft Generator" },
     { id: "drafts",             label: "Draft Posts" },
     { id: "reels",              label: "Draft Reels" },
     { id: "media-picks",        label: "Media Picks" },
@@ -353,118 +384,30 @@ export default async function SocialPage() {
         ))}
       </div>
 
+      {/* ── Draft Generator ──────────────────────────────────────────────── */}
+      <SectionHeader
+        id="draft-generator"
+        eyebrow="Content Creation"
+        title="Draft Generator"
+      />
+
+      <p className="text-xs text-gray-500 mb-6 leading-relaxed max-w-2xl">
+        Create social media drafts from selected media before weekly automation
+        is enabled. Select photos, choose a content angle and CTA, then generate
+        a ready-to-review draft.
+      </p>
+
+      <DraftGenerator photos={photosForClient} settings={serializedSettings} />
+
       {/* ── Draft Posts ──────────────────────────────────────────────────── */}
       <SectionHeader id="drafts" eyebrow="Content" title="Draft Posts" />
 
-      {postDrafts.length === 0 ? (
-        <EmptyState
-          icon={
-            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          }
-          title="No draft posts yet"
-          body="The AI agent will create Instagram post drafts here each week. All drafts require your approval before publishing."
-        />
-      ) : (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-800">
-                {["Title", "Status", "Source", "Created"].map((h, i) => (
-                  <th
-                    key={h}
-                    className={`text-left text-[10px] text-gray-600 uppercase tracking-widest px-4 py-3 font-semibold ${
-                      i > 0 ? "hidden sm:table-cell" : ""
-                    }`}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {postDrafts.map((draft) => (
-                <tr
-                  key={draft.id}
-                  className="border-b border-gray-800/50 last:border-0 hover:bg-gray-800/30 transition-colors"
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      {draft.media[0]?.sitePhoto && (
-                        <div className="w-9 h-9 rounded-lg overflow-hidden bg-gray-800 shrink-0">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={draft.media[0].sitePhoto.imageUrl}
-                            alt=""
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-sm text-white font-medium leading-snug truncate">
-                          {draft.title}
-                        </p>
-                        {draft.hook && (
-                          <p className="text-xs text-gray-500 truncate max-w-[220px]">
-                            {draft.hook}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 hidden sm:table-cell">
-                    <DraftStatusBadge status={draft.status} />
-                  </td>
-                  <td className="px-4 py-3 hidden sm:table-cell">
-                    <span className="text-xs text-gray-600">
-                      {draft.source === "AUTO_AGENT" ? "AI Agent" : "Manual"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 hidden sm:table-cell">
-                    <span className="text-xs text-gray-600">
-                      {new Date(draft.createdAt).toLocaleDateString()}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DraftSection type="POST" initialDrafts={serializedPostDrafts} />
 
       {/* ── Draft Reels ──────────────────────────────────────────────────── */}
       <SectionHeader id="reels" eyebrow="Content" title="Draft Reels" />
 
-      {reelDrafts.length === 0 ? (
-        <EmptyState
-          icon={
-            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          }
-          title="No reel drafts yet"
-          body="The agent will create Instagram Reel concepts here — hooks, structure, and recommended media. Review and approve before production."
-        />
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {reelDrafts.map((draft) => (
-            <div
-              key={draft.id}
-              className="bg-gray-900 border border-gray-800 rounded-xl p-4"
-            >
-              <div className="flex items-start justify-between mb-2.5">
-                <DraftTypeBadge type={draft.type} />
-                <DraftStatusBadge status={draft.status} />
-              </div>
-              <p className="text-white font-medium text-sm mb-1">{draft.title}</p>
-              {draft.hook && (
-                <p className="text-xs text-gray-500 leading-relaxed">{draft.hook}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      <DraftSection type="REEL" initialDrafts={serializedReelDrafts} />
 
       {/* ── Media Library Picks ──────────────────────────────────────────── */}
       <SectionHeader
@@ -566,36 +509,7 @@ export default async function SocialPage() {
           body="Upload photos via the Media Manager, then return here to score and classify them for the social agent."
         />
       ) : (
-        <MediaIntelligencePanel
-          photos={photos.map((p) => ({
-            id:                    p.id,
-            title:                 p.title,
-            imageUrl:              p.imageUrl,
-            category:              p.category,
-            label:                 p.label,
-            caption:               p.caption,
-            isFeatured:            p.isFeatured,
-            displayOrder:          p.displayOrder,
-            createdAt:             p.createdAt.toISOString(),
-            socialTitle:           p.socialTitle,
-            socialNotes:           p.socialNotes,
-            contentScore:          p.contentScore,
-            qualityScore:          p.qualityScore,
-            marketingScore:        p.marketingScore,
-            isSocialReady:         p.isSocialReady,
-            isReelCandidate:       p.isReelCandidate,
-            isPostCandidate:       p.isPostCandidate,
-            isBeforeAfterCandidate: p.isBeforeAfterCandidate,
-            isFavoriteForSocial:   p.isFavoriteForSocial,
-            contentTags:           p.contentTags,
-            serviceType:           p.serviceType,
-            visualCategory:        p.visualCategory,
-            contentAngle:          p.contentAngle,
-            seasonalRelevance:     p.seasonalRelevance,
-            lastReviewedForSocial: p.lastReviewedForSocial?.toISOString() ?? null,
-            reviewedByAgent:       p.reviewedByAgent,
-          }))}
-        />
+        <MediaIntelligencePanel photos={photosForClient} />
       )}
 
       {/* ── Trend Research ───────────────────────────────────────────────── */}
