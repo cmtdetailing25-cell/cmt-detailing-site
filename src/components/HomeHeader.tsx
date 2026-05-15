@@ -31,7 +31,7 @@ function LogoCircle({ mobile = false }: { mobile?: boolean }) {
       }}
     >
       <Image
-        src="/images/logo.PNG"
+        src="/images/logo.png"
         alt="CMT Detailing"
         fill
         quality={100}

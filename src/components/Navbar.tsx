@@ -31,7 +31,7 @@ export default function Navbar() {
             }}
           >
             <Image
-              src="/images/logo.PNG"
+              src="/images/logo.png"
               alt="CMT Detailing"
               fill
               className="object-cover object-center"
