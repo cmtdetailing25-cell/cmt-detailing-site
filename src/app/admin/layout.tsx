@@ -10,6 +10,7 @@ const adminLinks = [
   { href: "/admin/dashboard", label: "Dashboard" },
   { href: "/admin/leads", label: "Leads" },
   { href: "/admin/bookings", label: "Bookings" },
+  { href: "/admin/media", label: "Media" },
 ];
 
 export default function AdminLayout({
