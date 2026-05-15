@@ -9,15 +9,23 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // CMT Detailing brand accent — see docs/design-brief.md
+        // CMT Detailing brand accent
         accent: {
-          DEFAULT: "#426db6", // primary — buttons, borders, badges
-          hover: "#355185",   // darker — hover states
-          light: "#6f8fd1",   // lighter — text links, labels
+          DEFAULT: "#4a7bc4",
+          hover: "#385f9a",
+          light: "#7aa3d8",
+        },
+        // CMT brand palette
+        cmt: {
+          dark:   "#151b23", // header / nav background
+          light:  "#e9f0ef", // primary text on dark
+          muted:  "#708289", // secondary / muted text
+          border: "#434e56", // dividers, borders
+          subtle: "#94b2b6", // inactive links, accents
         },
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "sans-serif"],
+        sans: ["var(--font-canva-sans)", "sans-serif"],
         display: ["var(--font-montserrat)", "sans-serif"],
       },
     },

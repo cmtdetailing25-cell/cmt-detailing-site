@@ -83,16 +83,20 @@ export default function HomePage() {
       <HomeHeader />
 
       {/* ── Hero ── */}
-      <section className="relative min-h-[90vh] flex flex-col items-center justify-center text-center px-6 overflow-hidden">
+      <section className="relative w-full min-h-[85vh] md:min-h-[72vh] lg:min-h-[90vh] flex flex-col items-center justify-center text-center px-6 overflow-hidden">
         <Image
           src="/images/hero-mustang.jpg"
           alt="CMT Detailing — clean Mustang detail"
           fill
           priority
-          className="object-cover object-center"
+          className="object-cover object-[60%_50%] sm:object-center"
           sizes="100vw"
         />
-        <div className="absolute inset-0 bg-black/60" />
+        <div className="absolute inset-0 bg-gradient-to-b
+          from-black/40 via-black/50 to-black/65
+          md:from-black/10 md:via-black/18 md:to-black/30
+          lg:from-black/32 lg:via-black/40 lg:to-black/58"
+        />
         <HeroContent />
       </section>
 
@@ -103,7 +107,7 @@ export default function HomePage() {
             <p className="text-zinc-500 text-xs font-semibold uppercase tracking-[0.2em] mb-3">
               Our Work
             </p>
-            <h2 className="text-3xl md:text-4xl font-bold text-white">
+            <h2 className="font-display text-3xl md:text-4xl font-bold text-white">
               Real Results, Every Time
             </h2>
           </FadeUp>
@@ -142,7 +146,7 @@ export default function HomePage() {
       <section className="bg-zinc-900 py-20 px-6 border-t border-zinc-800">
         <div className="max-w-5xl mx-auto">
           <FadeUp className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+            <h2 className="font-display text-3xl md:text-4xl font-bold text-white mb-4">
               Professional Mobile Detailing Services
             </h2>
             <p className="text-zinc-400 max-w-xl mx-auto text-base leading-relaxed">
@@ -194,7 +198,7 @@ export default function HomePage() {
       <section className="bg-gradient-to-b from-zinc-950 to-zinc-900 py-20 px-6 border-t border-zinc-800">
         <div className="max-w-5xl mx-auto">
           <FadeUp className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-white">
+            <h2 className="font-display text-3xl md:text-4xl font-bold text-white">
               Why Choose CMT Detailing
             </h2>
           </FadeUp>
@@ -222,7 +226,7 @@ export default function HomePage() {
       {/* ── Service Area ── */}
       <section className="bg-zinc-900 border-t border-zinc-800 py-16 px-6 text-center">
         <FadeUp className="max-w-2xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-white mb-4">
             Serving Taunton and Surrounding Areas
           </h2>
           <p className="text-zinc-400 text-base leading-relaxed">
@@ -236,7 +240,7 @@ export default function HomePage() {
       {/* ── Final CTA ── */}
       <section className="bg-gradient-to-b from-zinc-950 to-zinc-900 border-t border-zinc-800 py-20 px-6 text-center">
         <FadeUp className="max-w-xl mx-auto">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+          <h2 className="font-display text-3xl md:text-4xl font-bold text-white mb-4">
             Ready to Get Your Vehicle Detailed?
           </h2>
           <p className="text-zinc-400 text-base leading-relaxed mb-8">

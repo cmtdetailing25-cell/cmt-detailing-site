@@ -266,7 +266,7 @@ function ServiceCard({
         </span>
       )}
 
-      <h3 className={`font-bold text-xl text-white mb-1 ${badge ? "pr-28" : ""}`}>
+      <h3 className={`font-display font-bold text-xl text-white mb-1 ${badge ? "pr-28" : ""}`}>
         {title}
       </h3>
       <p className="text-accent-light font-semibold text-sm mb-5">{price}</p>
@@ -337,7 +337,7 @@ export default function ServicesPage() {
           <p className="text-zinc-500 text-xs font-semibold uppercase tracking-[0.2em] mb-5">
             Professional Detailing Services
           </p>
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight mb-6">
+          <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight mb-6">
             Premium Detailing, Paint Correction &amp; Ceramic Coating
           </h1>
           <p className="text-zinc-400 text-lg leading-relaxed mb-10">
@@ -369,7 +369,7 @@ export default function ServicesPage() {
             <p className="text-zinc-500 text-xs font-semibold uppercase tracking-[0.2em] mb-4">
               Detailing
             </p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-white">
+            <h2 className="font-display text-3xl md:text-4xl font-extrabold text-white">
               Core Detailing Services
             </h2>
           </FadeUp>
@@ -393,7 +393,7 @@ export default function ServicesPage() {
             <p className="text-zinc-500 text-xs font-semibold uppercase tracking-[0.2em] mb-4">
               Paint Services
             </p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-white">
+            <h2 className="font-display text-3xl md:text-4xl font-extrabold text-white">
               Paint Enhancement &amp; Correction
             </h2>
           </FadeUp>
@@ -419,7 +419,7 @@ export default function ServicesPage() {
             <p className="text-zinc-500 text-xs font-semibold uppercase tracking-[0.2em] mb-4">
               Ceramic Coating
             </p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+            <h2 className="font-display text-3xl md:text-4xl font-extrabold text-white mb-4">
               Ceramic Coating Protection
             </h2>
             <p className="text-zinc-400 max-w-xl mx-auto text-base leading-relaxed">
@@ -448,7 +448,7 @@ export default function ServicesPage() {
             <p className="text-zinc-500 text-xs font-semibold uppercase tracking-[0.2em] mb-4">
               Maintenance
             </p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+            <h2 className="font-display text-3xl md:text-4xl font-extrabold text-white mb-4">
               Maintenance Program
             </h2>
             <p className="text-zinc-400 max-w-xl mx-auto text-base leading-relaxed">
@@ -480,7 +480,7 @@ export default function ServicesPage() {
             <p className="text-zinc-500 text-xs font-semibold uppercase tracking-[0.2em] mb-4">
               Enhancements
             </p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-white">
+            <h2 className="font-display text-3xl md:text-4xl font-extrabold text-white">
               Add-On Services
             </h2>
           </FadeUp>
@@ -569,7 +569,7 @@ export default function ServicesPage() {
       {/* ── 7. Final CTA ─────────────────────────────────────────────────────── */}
       <section className="bg-gradient-to-b from-zinc-950 to-zinc-900 border-t border-zinc-800 py-24 px-6 text-center">
         <FadeUp className="max-w-xl mx-auto">
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+          <h2 className="font-display text-3xl md:text-4xl font-extrabold text-white mb-4">
             Ready to transform your vehicle?
           </h2>
           <p className="text-zinc-400 text-base leading-relaxed mb-10">

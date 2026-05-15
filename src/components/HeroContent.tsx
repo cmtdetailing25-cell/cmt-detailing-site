@@ -27,28 +27,21 @@ export default function HeroContent() {
 
   return (
     <motion.div
-      className="relative z-10"
+      className="relative z-10 w-full"
       variants={container}
       initial="hidden"
       animate="show"
     >
-      <motion.p
-        variants={item}
-        className="text-gray-400 text-xs font-semibold uppercase tracking-[0.2em] mb-5"
-      >
-        Taunton, MA &amp; Surrounding Areas
-      </motion.p>
-
       <motion.h1
         variants={item}
-        className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-white leading-tight max-w-3xl mb-6"
+        className="font-display text-3xl sm:text-5xl md:text-6xl font-extrabold text-white leading-tight max-w-3xl mx-auto mb-4 sm:mb-6"
       >
         Mobile Detailing Done Right
       </motion.h1>
 
       <motion.p
         variants={item}
-        className="text-gray-300 text-base md:text-lg max-w-2xl leading-relaxed mb-10"
+        className="text-gray-300 text-sm sm:text-base md:text-lg max-w-xl mx-auto leading-relaxed mb-8 sm:mb-10"
       >
         Clean, consistent, professional detailing — brought directly to your
         driveway. CMT Detailing serves Taunton, MA and surrounding areas with
@@ -67,7 +60,7 @@ export default function HeroContent() {
         </Link>
         <Link
           href="/services"
-          className="border-2 border-accent text-accent-light hover:bg-accent/10 font-semibold px-8 py-3 rounded-lg transition-colors"
+          className="bg-white/10 backdrop-blur-sm border border-white/30 text-white hover:bg-white/20 font-semibold px-8 py-3 rounded-lg transition-all duration-200"
         >
           View Services
         </Link>
