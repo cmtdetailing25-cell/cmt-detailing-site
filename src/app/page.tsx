@@ -69,12 +69,6 @@ const resultImages = [
     label: "Exterior Detail",
     href: "/services/exterior-detail",
   },
-  {
-    src: "/images/detail-close.jpg",
-    alt: "Close-up detailing work",
-    label: "Full Detail",
-    href: "/services/full-detail",
-  },
 ];
 
 export default function HomePage() {
@@ -112,23 +106,23 @@ export default function HomePage() {
             </h2>
           </FadeUp>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {resultImages.map((img, i) => (
               <FadeUp key={img.src} delay={i * 0.1}>
                 <Link
                   href={img.href}
-                  className="group relative aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-800 block"
+                  className="group relative aspect-[3/2] rounded-2xl overflow-hidden bg-zinc-800 block"
                 >
                   <Image
                     src={img.src}
                     alt={img.alt}
                     fill
-                    className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                    sizes="(max-width: 640px) 100vw, 33vw"
+                    className="object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+                    sizes="(max-width: 640px) 100vw, 50vw"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
-                  <div className="absolute inset-x-0 bottom-0 p-4 flex items-end justify-between">
-                    <p className="text-sm font-semibold text-white tracking-wide">
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 p-5 flex items-end justify-between">
+                    <p className="text-base font-semibold text-white tracking-wide">
                       {img.label}
                     </p>
                     <span className="text-accent-light text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200">
