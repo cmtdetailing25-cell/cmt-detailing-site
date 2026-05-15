@@ -10,7 +10,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Possible statuses for a lead as it moves through your workflow
+// ─── Existing enums ───────────────────────────────────────────────────────────
+
 enum LeadStatus {
   NEW
   CONTACTED
@@ -18,26 +19,54 @@ enum LeadStatus {
   LOST
 }
 
+// ─── Social Media Agent enums ─────────────────────────────────────────────────
+
+enum SocialContentType {
+  POST
+  REEL
+  STORY
+}
+
+enum SocialContentStatus {
+  IDEA
+  DRAFT
+  NEEDS_APPROVAL
+  APPROVED
+  SCHEDULED
+  POSTED
+  ARCHIVED
+}
+
+enum SocialContentSource {
+  AUTO_AGENT
+  MANUAL
+}
+
+enum SocialAgentRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// ─── Existing models ──────────────────────────────────────────────────────────
+
 model Lead {
   id        String     @id @default(cuid())
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   status    LeadStatus @default(NEW)
 
-  // Customer info
-  fullName    String
-  phone       String
-  email       String
+  fullName  String
+  phone     String
+  email     String
 
-  // Vehicle info
   vehicleYear  String
   vehicleMake  String
   vehicleModel String
 
-  // Service info
   serviceRequested String
 
-  // Job info
   town          String
   preferredDate String
   preferredTime String
@@ -54,4 +83,88 @@ model SitePhoto {
   displayOrder Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  socialMedia SocialContentMedia[]
+}
+
+// ─── Social Media Agent models ────────────────────────────────────────────────
+
+model SocialAgentRun {
+  id            String               @id @default(cuid())
+  status        SocialAgentRunStatus @default(PENDING)
+  weekStartDate DateTime
+  weekEndDate   DateTime
+  postsTarget   Int                  @default(3)
+  reelsTarget   Int                  @default(2)
+  draftsCreated Int                  @default(0)
+  mediaReviewed Int                  @default(0)
+  startedAt     DateTime?
+  completedAt   DateTime?
+  errorMessage  String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  drafts SocialContentDraft[]
+}
+
+model SocialContentDraft {
+  id              String              @id @default(cuid())
+  type            SocialContentType
+  status          SocialContentStatus @default(IDEA)
+  source          SocialContentSource @default(MANUAL)
+  title           String
+  caption         String?
+  hashtags        String?
+  hook            String?
+  notes           String?
+  scheduledFor    DateTime?
+  postedAt        DateTime?
+  instagramPostId String?
+  generatedAt     DateTime?
+  approvedAt      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  agentRunId String?
+  agentRun   SocialAgentRun? @relation(fields: [agentRunId], references: [id])
+
+  media SocialContentMedia[]
+}
+
+model SocialContentMedia {
+  id          String   @id @default(cuid())
+  draftId     String
+  sitePhotoId String
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  draft     SocialContentDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  sitePhoto SitePhoto          @relation(fields: [sitePhotoId], references: [id])
+}
+
+model SocialTrendIdea {
+  id              String   @id @default(cuid())
+  title           String
+  source          String
+  category        String
+  notes           String?
+  popularityScore Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SocialAgentSettings {
+  id                    String    @id @default(cuid())
+  weeklyPostTarget      Int       @default(3)
+  weeklyReelTarget      Int       @default(2)
+  defaultHashtags       String?
+  brandVoice            String?
+  approvalRequired      Boolean   @default(true)
+  autoGenerateEnabled   Boolean   @default(false)
+  preferredPostingDays  String?
+  preferredPostingTimes String?
+  lastGeneratedAt       DateTime?
+  nextGenerationAt      DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 }

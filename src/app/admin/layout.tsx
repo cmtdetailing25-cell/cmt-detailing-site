@@ -11,6 +11,7 @@ const adminLinks = [
   { href: "/admin/leads", label: "Leads" },
   { href: "/admin/bookings", label: "Bookings" },
   { href: "/admin/media", label: "Media" },
+  { href: "/admin/social", label: "Social Agent" },
 ];
 
 export default function AdminLayout({
