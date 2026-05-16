@@ -132,22 +132,25 @@ model Vehicle {
 }
 
 model DetailJob {
-  id            String    @id @default(cuid())
-  clientId      String?
-  vehicleId     String?
-  title         String
-  slug          String?
-  serviceType   String?
-  jobDate       DateTime?
-  location      String?
-  description   String?
-  internalNotes String?
-  socialSummary String?
-  price         Float?
-  isSocialReady Boolean   @default(false)
-  isFeatured    Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  clientId       String?
+  vehicleId      String?
+  title          String
+  slug           String?
+  serviceType    String?
+  jobDate        DateTime?
+  scheduledStart DateTime?
+  scheduledEnd   DateTime?
+  scheduleStatus String?
+  location       String?
+  description    String?
+  internalNotes  String?
+  socialSummary  String?
+  price          Float?
+  isSocialReady  Boolean   @default(false)
+  isFeatured     Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   client       Client?              @relation(fields: [clientId], references: [id])
   vehicle      Vehicle?             @relation(fields: [vehicleId], references: [id])
@@ -173,12 +176,30 @@ model Lead {
 
   serviceRequested String
 
-  town          String
-  preferredDate String
-  preferredTime String
+  town             String
+  preferredDate    String
+  preferredTime    String
+  vehicleCondition String?
+  notes            String?
 
   clientId String?
   client   Client? @relation(fields: [clientId], references: [id])
+}
+
+// ─── Admin Notifications ──────────────────────────────────────────────────────
+
+model AdminNotification {
+  id               String   @id @default(cuid())
+  type             String
+  title            String
+  message          String
+  isRead           Boolean  @default(false)
+  relatedBookingId String?
+  relatedClientId  String?
+  relatedVehicleId String?
+  relatedJobId     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model SitePhoto {
