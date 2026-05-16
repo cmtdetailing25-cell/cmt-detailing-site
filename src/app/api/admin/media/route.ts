@@ -21,6 +21,7 @@ export async function POST(request: Request) {
   const label = (formData.get("label") as string | null) ?? undefined;
   const isFeatured = formData.get("isFeatured") === "true";
   const displayOrder = parseInt((formData.get("displayOrder") as string) ?? "0", 10) || 0;
+  const detailJobId = (formData.get("detailJobId") as string | null) || null;
 
   if (!file || !title || !category) {
     return NextResponse.json({ error: "file, title, and category are required" }, { status: 400 });
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
       label: label || null,
       isFeatured,
       displayOrder,
+      detailJobId,
     },
   });
 

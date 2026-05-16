@@ -7,11 +7,14 @@ export const metadata: Metadata = {
 };
 
 const adminLinks = [
-  { href: "/admin/dashboard", label: "Dashboard" },
-  { href: "/admin/leads", label: "Leads" },
-  { href: "/admin/bookings", label: "Bookings" },
-  { href: "/admin/media", label: "Media" },
-  { href: "/admin/social", label: "Social Agent" },
+  { href: "/admin/dashboard",    label: "Dashboard"     },
+  { href: "/admin/leads",        label: "Leads"         },
+  { href: "/admin/bookings",     label: "Bookings"      },
+  { href: "/admin/clients",      label: "Clients"       },
+  { href: "/admin/jobs",         label: "Jobs"          },
+  { href: "/admin/media",        label: "Media"         },
+  { href: "/admin/media/import", label: "Import Media"  },
+  { href: "/admin/social",       label: "Social Agent"  },
 ];
 
 export default function AdminLayout({
