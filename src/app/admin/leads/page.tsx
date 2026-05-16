@@ -6,6 +6,9 @@ export const dynamic = "force-dynamic";
 export default async function LeadsPage() {
   const leads = await prisma.lead.findMany({
     orderBy: { createdAt: "desc" },
+    include: {
+      client: { select: { id: true, fullName: true, status: true, isVip: true } },
+    },
   });
 
   return (

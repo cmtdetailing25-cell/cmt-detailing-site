@@ -1,6 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+type ClientRef = {
+  id: string;
+  fullName: string;
+  status: string;
+  isVip: boolean;
+};
 
 type Lead = {
   id: string;
@@ -16,19 +24,21 @@ type Lead = {
   preferredTime: string;
   status: string;
   createdAt: Date;
+  client: ClientRef | null;
 };
 
 const STATUSES = ["NEW", "CONTACTED", "BOOKED", "LOST"] as const;
 
 const statusColors: Record<string, string> = {
-  NEW: "bg-blue-900/50 text-blue-300",
+  NEW:       "bg-blue-900/50 text-blue-300",
   CONTACTED: "bg-yellow-900/50 text-yellow-300",
-  BOOKED: "bg-green-900/50 text-green-300",
-  LOST: "bg-gray-800 text-gray-500",
+  BOOKED:    "bg-green-900/50 text-green-300",
+  LOST:      "bg-gray-800 text-gray-500",
 };
 
 export default function LeadsTable({ leads }: { leads: Lead[] }) {
   const router = useRouter();
+  const [converting, setConverting] = useState<string | null>(null);
 
   async function updateStatus(id: string, status: string) {
     await fetch(`/api/leads/${id}`, {
@@ -36,8 +46,20 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    // Refresh server data without a full reload
     router.refresh();
+  }
+
+  async function convertLead(id: string) {
+    setConverting(id);
+    try {
+      const res = await fetch(`/api/leads/${id}/convert`, { method: "POST" });
+      const data = await res.json();
+      if (data.clientId) {
+        router.push(`/admin/clients/${data.clientId}`);
+      }
+    } finally {
+      setConverting(null);
+    }
   }
 
   if (leads.length === 0) {
@@ -55,6 +77,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
             <th className="px-4 py-3 font-medium">Vehicle</th>
             <th className="px-4 py-3 font-medium">Preferred Date</th>
             <th className="px-4 py-3 font-medium">Status</th>
+            <th className="px-4 py-3 font-medium">Client</th>
             <th className="px-4 py-3 font-medium">Submitted</th>
           </tr>
         </thead>
@@ -74,22 +97,35 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
                 {lead.preferredDate} @ {lead.preferredTime}
               </td>
               <td className="px-4 py-3">
-                {/* Inline status dropdown */}
                 <select
                   value={lead.status}
                   onChange={(e) => updateStatus(lead.id, e.target.value)}
                   className={`text-xs font-medium rounded px-2 py-1 border-0 cursor-pointer focus:outline-none ${statusColors[lead.status]}`}
                 >
                   {STATUSES.map((s) => (
-                    <option
-                      key={s}
-                      value={s}
-                      className="bg-gray-900 text-gray-200"
-                    >
+                    <option key={s} value={s} className="bg-gray-900 text-gray-200">
                       {s}
                     </option>
                   ))}
                 </select>
+              </td>
+              <td className="px-4 py-3">
+                {lead.client ? (
+                  <a
+                    href={`/admin/clients/${lead.client.id}`}
+                    className="text-xs text-blue-400 hover:text-blue-300 font-medium"
+                  >
+                    {lead.client.fullName} →
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => convertLead(lead.id)}
+                    disabled={converting === lead.id}
+                    className="text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 rounded px-2 py-1 transition-colors disabled:opacity-50"
+                  >
+                    {converting === lead.id ? "Creating…" : "Create Client"}
+                  </button>
+                )}
               </td>
               <td className="px-4 py-3 text-gray-500">
                 {new Date(lead.createdAt).toLocaleDateString()}
