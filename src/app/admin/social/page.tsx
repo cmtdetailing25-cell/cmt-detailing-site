@@ -6,7 +6,7 @@ import DraftSection from "@/components/DraftSection";
 import WeeklyAgentButton from "@/components/WeeklyAgentButton";
 import TrendIntelligencePanel from "@/components/TrendIntelligencePanel";
 import type { SerializedDraft } from "@/components/DraftSection";
-import type { TrendInsightRow } from "@/components/TrendIntelligencePanel";
+import type { TrendInsightRow, TrendResearchSettingsRow, TrendResearchRunRow } from "@/components/TrendIntelligencePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -210,7 +210,7 @@ function WeeklyDraftCard({ draft }: { draft: PlanDraft }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function SocialPage() {
-  const [photos, drafts, trendInsights, recentRuns, settings] = await Promise.all([
+  const [photos, drafts, trendInsights, recentRuns, settings, researchSettings, researchRuns] = await Promise.all([
     prisma.sitePhoto.findMany({ orderBy: { createdAt: "desc" } }),
     prisma.socialContentDraft.findMany({
       where:   { status: { not: "ARCHIVED" } },
@@ -256,6 +256,8 @@ export default async function SocialPage() {
       },
     }),
     prisma.socialAgentSettings.findFirst(),
+    prisma.trendResearchSettings.findFirst(),
+    prisma.trendResearchRun.findMany({ orderBy: { createdAt: "desc" }, take: 20 }),
   ]);
 
   const latestRun       = recentRuns[0] ?? null;
@@ -319,6 +321,33 @@ export default async function SocialPage() {
     seasonalRelevance:      p.seasonalRelevance,
     lastReviewedForSocial:  p.lastReviewedForSocial?.toISOString() ?? null,
     reviewedByAgent:        p.reviewedByAgent,
+  }));
+
+  // Serialize research settings + runs
+  const serializedResearchSettings: TrendResearchSettingsRow | null = researchSettings
+    ? {
+        id:                 researchSettings.id,
+        isEnabled:          researchSettings.isEnabled,
+        researchFrequency:  researchSettings.researchFrequency,
+        targetPlatforms:    researchSettings.targetPlatforms,
+        targetHashtags:     researchSettings.targetHashtags,
+        competitorAccounts: researchSettings.competitorAccounts,
+        serviceCategories:  researchSettings.serviceCategories,
+        locationKeywords:   researchSettings.locationKeywords,
+        minConfidenceScore: researchSettings.minConfidenceScore,
+      }
+    : null;
+
+  const serializedResearchRuns: TrendResearchRunRow[] = researchRuns.map((r) => ({
+    id:             r.id,
+    status:         r.status,
+    startedAt:      r.startedAt?.toISOString() ?? null,
+    completedAt:    r.completedAt?.toISOString() ?? null,
+    trendsFound:    r.trendsFound,
+    sourcesChecked: r.sourcesChecked,
+    errorMessage:   r.errorMessage,
+    notes:          r.notes,
+    createdAt:      r.createdAt.toISOString(),
   }));
 
   // Serialize TrendInsights for the client component
@@ -680,7 +709,11 @@ export default async function SocialPage() {
         </div>
       )}
 
-      <TrendIntelligencePanel initialTrends={serializedTrends} />
+      <TrendIntelligencePanel
+        initialTrends={serializedTrends}
+        initialSettings={serializedResearchSettings}
+        initialRuns={serializedResearchRuns}
+      />
 
       {/* ── Settings ─────────────────────────────────────────────────────── */}
       <SectionHeader id="settings" eyebrow="Configuration" title="Agent Settings" />

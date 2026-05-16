@@ -120,12 +120,13 @@ export async function runWeeklyAgent(agentRunId: string): Promise<WeeklyAgentRes
 
     // ── 0. Fetch active, non-expired TrendInsights for caption shaping ─────────
 
+    // Prefer high-confidence, then recently added (research runs surface new trends with fresh createdAt)
     const activeTrends = await prisma.trendInsight.findMany({
       where: {
         isActive: true,
         OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
       },
-      orderBy: [{ confidenceScore: "desc" }, { popularityScore: "desc" }],
+      orderBy: [{ confidenceScore: "desc" }, { createdAt: "desc" }],
     });
 
     // ── 1. Find recently-used job/photo IDs (rotation guard) ──────────────────
