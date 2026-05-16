@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     socialSummary,
     isSocialReady,
     isFeatured,
+    price,
   } = body;
 
   if (!title?.trim()) {
@@ -65,6 +66,7 @@ export async function POST(request: Request) {
       socialSummary: socialSummary?.trim() || null,
       isSocialReady: isSocialReady === true,
       isFeatured:    isFeatured    === true,
+      price:         typeof price === "number" ? price : null,
     },
     include: {
       client:  { select: { id: true, fullName: true } },

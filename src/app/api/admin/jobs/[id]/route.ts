@@ -40,7 +40,7 @@ export async function PATCH(
   const {
     clientId, vehicleId, title, serviceType, jobDate,
     location, description, internalNotes, socialSummary,
-    isSocialReady, isFeatured,
+    isSocialReady, isFeatured, price,
   } = body;
 
   const data: Record<string, unknown> = {};
@@ -55,6 +55,7 @@ export async function PATCH(
   if (socialSummary !== undefined) data.socialSummary = socialSummary?.trim() || null;
   if (isSocialReady !== undefined) data.isSocialReady = isSocialReady === true;
   if (isFeatured    !== undefined) data.isFeatured    = isFeatured    === true;
+  if (price         !== undefined) data.price         = typeof price === "number" ? price : null;
 
   const job = await prisma.detailJob.update({ where: { id: params.id }, data });
   return NextResponse.json(job);

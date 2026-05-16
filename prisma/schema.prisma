@@ -136,6 +136,7 @@ model DetailJob {
   description   String?
   internalNotes String?
   socialSummary String?
+  price         Float?
   isSocialReady Boolean   @default(false)
   isFeatured    Boolean   @default(false)
   createdAt     DateTime  @default(now())

@@ -16,7 +16,7 @@ interface Vehicle {
 
 interface DetailJobSummary {
   id: string; title: string; serviceType: string | null; jobDate: string | null;
-  isSocialReady: boolean; isFeatured: boolean; createdAt: string;
+  price: number | null; isSocialReady: boolean; isFeatured: boolean; createdAt: string;
   vehicle: { year: string; make: string; model: string; color: string | null } | null;
   _count: { photos: number; socialDrafts: number };
 }
@@ -152,7 +152,7 @@ function AddJobModal({
   const [form, setForm] = useState({
     vehicleId: primary?.id ?? "",
     title: "", serviceType: "", jobDate: new Date().toISOString().slice(0, 10),
-    location: "Taunton, MA", description: "", isSocialReady: false, isFeatured: false,
+    location: "Taunton, MA", description: "", price: "", isSocialReady: false, isFeatured: false,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState<string | null>(null);
@@ -176,10 +176,15 @@ function AddJobModal({
     setSaving(true);
     setError(null);
     try {
+      const payload = {
+        ...form,
+        clientId,
+        price: form.price !== "" ? parseFloat(form.price) : null,
+      };
       const res = await fetch("/api/admin/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, clientId }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Failed"); setSaving(false); return; }
@@ -225,7 +230,7 @@ function AddJobModal({
               placeholder="Auto-filled or enter manually…"
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#94b2b6] placeholder-gray-700" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-[11px] text-gray-500 mb-1">Date</label>
               <input type="date" value={form.jobDate} onChange={(e) => setForm((f) => ({ ...f, jobDate: e.target.value, title: "" }))}
@@ -235,6 +240,13 @@ function AddJobModal({
               <label className="block text-[11px] text-gray-500 mb-1">Location</label>
               <input value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#94b2b6]" />
+            </div>
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-1">Price ($)</label>
+              <input type="number" min="0" step="0.01" value={form.price}
+                onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                placeholder="0.00"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#94b2b6] placeholder-gray-700" />
             </div>
           </div>
           <div>
@@ -317,8 +329,9 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
   );
   if (!client) return null;
 
-  const totalPhotos = client.detailJobs.reduce((s, j) => s + j._count.photos, 0);
-  const totalDrafts = client.detailJobs.reduce((s, j) => s + j._count.socialDrafts, 0);
+  const totalPhotos  = client.detailJobs.reduce((s, j) => s + j._count.photos, 0);
+  const totalDrafts  = client.detailJobs.reduce((s, j) => s + j._count.socialDrafts, 0);
+  const totalRevenue = client.detailJobs.reduce((s, j) => s + (j.price ?? 0), 0);
 
   return (
     <div className="p-6 max-w-5xl">
@@ -366,12 +379,13 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-3 mb-8">
+      <div className="grid grid-cols-5 gap-3 mb-8">
         {[
-          { label: "Detail Jobs",   value: client.detailJobs.length },
-          { label: "Vehicles",      value: client.vehicles.length },
-          { label: "Photos",        value: totalPhotos },
-          { label: "Social Drafts", value: totalDrafts },
+          { label: "Detail Jobs",    value: String(client.detailJobs.length) },
+          { label: "Vehicles",       value: String(client.vehicles.length) },
+          { label: "Photos",         value: String(totalPhotos) },
+          { label: "Social Drafts",  value: String(totalDrafts) },
+          { label: "Total Revenue",  value: totalRevenue > 0 ? `$${totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—" },
         ].map((s) => (
           <div key={s.label} className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center">
             <p className="text-2xl font-bold text-white">{s.value}</p>
@@ -549,6 +563,11 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                       )}
                     </div>
                     <div className="text-right shrink-0">
+                      {job.price != null && (
+                        <p className="text-sm font-semibold text-[#94b2b6]">
+                          ${job.price.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </p>
+                      )}
                       {job.jobDate && (
                         <p className="text-xs text-gray-400">
                           {new Date(job.jobDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
