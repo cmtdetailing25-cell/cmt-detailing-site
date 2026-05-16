@@ -1,4 +1,4 @@
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export type ContentType = "POST" | "REEL" | "STORY";
 
@@ -40,6 +40,16 @@ export const CTA_STYLES: { key: CtaStyle; label: string }[] = [
   { key: "soft-luxury",    label: "Soft Luxury CTA" },
 ];
 
+// Trend context passed from the Weekly Agent when an active TrendInsight is selected
+export interface TrendContext {
+  id?: string;
+  title: string;
+  exampleHook?: string | null;
+  exampleCaptionAngle?: string | null;
+  hashtags?: string | null;
+  suggestedUse?: string | null;
+}
+
 export interface GenerateInput {
   contentType: ContentType;
   contentAngle: ContentAngle;
@@ -47,6 +57,13 @@ export interface GenerateInput {
   notes?: string;
   mediaCount: number;
   serviceTypes?: string[];
+  // Job / client / vehicle context (populated by the Weekly Agent; empty for manual drafts)
+  vehicleInfo?: { year?: string | null; make?: string | null; model?: string | null; color?: string | null } | null;
+  clientName?: string | null;
+  jobServiceType?: string | null;
+  jobDate?: string | null;
+  mediaLabels?: string[];
+  trendInsight?: TrendContext | null;
   settings?: {
     defaultHashtags?: string | null;
     brandVoice?: string | null;
@@ -62,7 +79,7 @@ export interface GenerateOutput {
   notes: string | null;
 }
 
-// ─── Caption templates ────────────────────────────────────────────────────────
+// ─── Caption body templates ───────────────────────────────────────────────────
 
 const CAPTIONS: Record<ContentAngle, string> = {
   "before-after":
@@ -140,40 +157,120 @@ const ANGLE_HASHTAGS: Record<ContentAngle, string> = {
 const DEFAULT_HASHTAGS =
   "#CMTDetailing #MobileDetailing #TauntonMA #AutoDetailing #CarDetailing #MassachusettsDetailing";
 
+// ─── Vehicle-specific opening lines ──────────────────────────────────────────
+
+function buildVehicleOpener(
+  vehicleInfo: GenerateInput["vehicleInfo"],
+  angle: ContentAngle
+): string {
+  if (!vehicleInfo?.make) return "";
+
+  const parts   = [vehicleInfo.year, vehicleInfo.color, vehicleInfo.make, vehicleInfo.model].filter(Boolean);
+  const vehicle = parts.join(" ");
+
+  const openers: Record<ContentAngle, string> = {
+    "before-after":
+      `This ${vehicle} came in needing a complete transformation — it left looking like a different car.`,
+    "mobile-detailing":
+      `We brought the full detail experience directly to this ${vehicle} owner.`,
+    "interior-refresh":
+      `The interior on this ${vehicle} was overdue for a proper deep clean and refresh.`,
+    "exterior-gloss":
+      `This ${vehicle} received a focused exterior detail to restore the gloss and protect the paint.`,
+    "paint-correction":
+      `This ${vehicle} came in with heavy swirl marks throughout — machine correction brought the paint back to life.`,
+    "ceramic-protection":
+      `This ${vehicle} is now protected for years with a full ceramic coating application.`,
+    "maintenance-detail":
+      `Keeping this ${vehicle} in top condition with a regular maintenance detail.`,
+    "customer-education":
+      `Here's a look at what we found on this ${vehicle} and exactly how we addressed it.`,
+    "seasonal-protection":
+      `Getting this ${vehicle} protected and sealed before the season changes.`,
+  };
+
+  return openers[angle];
+}
+
 // ─── Main generator ───────────────────────────────────────────────────────────
 //
 // Swap this function body for real AI (OpenAI / Claude) once ready.
-// The interface stays the same — only the implementation changes.
+// The interface is stable — only the implementation changes.
 
 export function generateDraftContent(input: GenerateInput): GenerateOutput {
-  const { contentType, contentAngle, ctaStyle, notes, settings } = input;
+  const {
+    contentType, contentAngle, ctaStyle, notes, settings,
+    vehicleInfo, clientName, jobServiceType, jobDate, mediaLabels, trendInsight,
+  } = input;
 
-  const bodyCaption  = CAPTIONS[contentAngle];
-  const ctaLine      = CTA_LINES[ctaStyle];
-  const caption      = `${bodyCaption}\n\n${ctaLine}`;
+  // ── Caption ─────────────────────────────────────────────────────────────────
+
+  const vehicleOpener = buildVehicleOpener(vehicleInfo, contentAngle);
+
+  // If the trend insight supplies a caption angle, use it as a framing sentence
+  // before the standard body paragraph
+  const trendFrame  = trendInsight?.exampleCaptionAngle?.trim() ?? null;
+  const bodyCaption = CAPTIONS[contentAngle];
+  const ctaLine     = CTA_LINES[ctaStyle];
+
+  const hasBeforeAfter = mediaLabels?.some((l) => /before|after/i.test(l));
+  const swipeLine      = hasBeforeAfter ? "Swipe to see the full transformation." : null;
+
+  const captionParts = [vehicleOpener, trendFrame, bodyCaption, swipeLine, ctaLine].filter(Boolean);
+  const caption      = captionParts.join("\n\n");
+
+  // ── Hashtags ─────────────────────────────────────────────────────────────────
 
   const baseHashtags  = settings?.defaultHashtags ?? DEFAULT_HASHTAGS;
   const angleHashtags = ANGLE_HASHTAGS[contentAngle];
-  const hashtags      = `${baseHashtags} ${angleHashtags}`;
+  const trendHashtags = trendInsight?.hashtags?.trim() ?? "";
+  const hashtags      = [baseHashtags, angleHashtags, trendHashtags].filter(Boolean).join(" ");
 
-  const hook = contentType !== "POST" ? HOOKS[contentAngle] : null;
+  // ── Hook ─────────────────────────────────────────────────────────────────────
 
-  const baseTitle = TITLES[contentAngle];
-  const title =
-    contentType === "REEL"  ? `Reel — ${baseTitle}` :
-    contentType === "STORY" ? `Story — ${baseTitle}` :
-    baseTitle;
+  let hook: string | null = null;
+  if (contentType !== "POST") {
+    // Prefer trend-supplied hook, fall back to template
+    hook = trendInsight?.exampleHook?.trim() ?? HOOKS[contentAngle];
+  }
 
-  const noteLines = [
-    "Generated from manual selection via Draft Generator.",
-    notes?.trim() ? `Additional notes: ${notes.trim()}` : null,
-  ].filter(Boolean);
+  // ── Title ────────────────────────────────────────────────────────────────────
+
+  const baseTitle    = TITLES[contentAngle];
+  const vehicleLabel = vehicleInfo?.make
+    ? ` — ${[vehicleInfo.make, vehicleInfo.model].filter(Boolean).join(" ")}`
+    : "";
+  const typePrefix =
+    contentType === "REEL"  ? "Reel — " :
+    contentType === "STORY" ? "Story — " : "";
+  const title = `${typePrefix}${baseTitle}${vehicleLabel}`;
+
+  // ── Notes (admin-facing context) ──────────────────────────────────────────
+
+  const isFromAgent = !!(clientName || vehicleInfo?.make || jobServiceType || trendInsight);
+  const noteLines: string[] = [];
+
+  if (clientName)       noteLines.push(`Client: ${clientName}`);
+  if (vehicleInfo?.make) {
+    const veh = [vehicleInfo.year, vehicleInfo.make, vehicleInfo.model].filter(Boolean).join(" ");
+    noteLines.push(`Vehicle: ${veh}`);
+  }
+  if (jobServiceType)   noteLines.push(`Service: ${jobServiceType}`);
+  if (jobDate)          noteLines.push(`Job date: ${jobDate}`);
+  if (trendInsight)     noteLines.push(`Trend reference: ${trendInsight.title}`);
+  if (notes?.trim())    noteLines.push(notes.trim());
+
+  noteLines.push(
+    isFromAgent
+      ? `Auto-generated by Weekly Agent v2.`
+      : "Generated from manual selection via Draft Generator."
+  );
 
   return {
     title,
     caption,
     hashtags,
     hook,
-    notes: noteLines.join("\n") || null,
+    notes: noteLines.join("\n"),
   };
 }

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { generateDraftContent, CONTENT_ANGLES, CTA_STYLES } from "./generateDraftContent";
-import type { SitePhoto, DetailJob } from "@prisma/client";
+import type { SitePhoto } from "@prisma/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -12,13 +12,25 @@ export interface WeeklyAgentResult {
   error?: string;
 }
 
+// Inlined shape of a job row returned by the query below
+interface JobWithContext {
+  id: string;
+  serviceType: string | null;
+  jobDate: Date | null;
+  isSocialReady: boolean;
+  isFeatured: boolean;
+  photos: SitePhoto[];
+  client: { fullName: string } | null;
+  vehicle: { year: string; make: string; model: string; color: string | null } | null;
+}
+
 // ─── Week bounds (Monday–Sunday) ──────────────────────────────────────────────
 
 export function getWeekBounds(): { start: Date; end: Date } {
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = Sunday
+  const now        = new Date();
+  const dayOfWeek  = now.getDay(); // 0 = Sunday
   const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const monday = new Date(now);
+  const monday     = new Date(now);
   monday.setDate(monday.getDate() + daysToMonday);
   monday.setHours(0, 0, 0, 0);
   const sunday = new Date(monday);
@@ -29,55 +41,50 @@ export function getWeekBounds(): { start: Date; end: Date } {
 
 // ─── DetailJob scoring ────────────────────────────────────────────────────────
 //
-// Higher = better candidate. Jobs with more social-ready photos, before/after
-// pairs, and recent dates score higher. Recently-used jobs are penalised so the
-// agent rotates across the library.
+// Higher = better candidate. Social-ready, featured, before/after pairs, and
+// recent jobs score higher. Recently-used jobs take a heavy penalty so the
+// agent rotates across the library over successive weeks.
 
-interface JobWithPhotos extends DetailJob {
-  photos: SitePhoto[];
-}
-
-function scoreJob(job: JobWithPhotos, recentlyUsedJobIds: Set<string>): number {
+function scoreJob(job: JobWithContext, recentlyUsedJobIds: Set<string>): number {
   let s = 0;
-  if (job.isSocialReady)  s += 40;
-  if (job.isFeatured)     s += 20;
+  if (job.isSocialReady) s += 40;
+  if (job.isFeatured)    s += 20;
 
-  const photos = job.photos;
-  const socialReady     = photos.filter((p) => p.isSocialReady).length;
-  const beforeAfterPair = photos.some((p) => p.isBeforeAfterCandidate);
-  const postCandidates  = photos.filter((p) => p.isPostCandidate).length;
-  const reelCandidates  = photos.filter((p) => p.isReelCandidate).length;
+  const { photos } = job;
+  const socialReady      = photos.filter((p) => p.isSocialReady).length;
+  const beforeAfterPair  = photos.some((p) => p.isBeforeAfterCandidate);
+  const postCandidates   = photos.filter((p) => p.isPostCandidate).length;
+  const reelCandidates   = photos.filter((p) => p.isReelCandidate).length;
 
-  s += socialReady     * 6;
+  s += socialReady    * 6;
   s += beforeAfterPair ? 15 : 0;
-  s += postCandidates  * 3;
-  s += reelCandidates  * 3;
+  s += postCandidates * 3;
+  s += reelCandidates * 3;
 
-  // Average marketing score of all photos
   if (photos.length > 0) {
     const avgMarketing = photos.reduce((sum, p) => sum + p.marketingScore, 0) / photos.length;
     const avgQuality   = photos.reduce((sum, p) => sum + p.qualityScore,   0) / photos.length;
     s += avgMarketing * 2;
-    s += avgQuality   * 1;
+    s += avgQuality;
   }
 
-  // Minimum photo threshold: needs at least 2 photos to be a strong candidate
+  // Need at least 2 photos to be a strong candidate
   if (photos.length < 2) s -= 20;
 
-  // Recency bonus: jobs from past 30 days get a small boost
+  // Recency bonus
   if (job.jobDate) {
-    const daysAgo = (Date.now() - new Date(job.jobDate).getTime()) / (1000 * 60 * 60 * 24);
-    if (daysAgo < 30)  s += 10;
-    if (daysAgo < 7)   s += 5;
+    const daysAgo = (Date.now() - new Date(job.jobDate).getTime()) / 86_400_000;
+    if (daysAgo < 30) s += 10;
+    if (daysAgo < 7)  s += 5;
   }
 
-  // Heavy penalty for recently-used jobs (used in the past 14 days)
+  // Heavy penalty for recently-used jobs (past 14 days)
   if (recentlyUsedJobIds.has(job.id)) s -= 80;
 
   return s;
 }
 
-// ─── Photo scoring (fallback when no DetailJob assigned) ──────────────────────
+// ─── Photo scoring (fallback: unassigned photos with no DetailJob) ─────────────
 
 function scorePhoto(photo: SitePhoto, recentlyUsedIds: Set<string>): number {
   let s = 0;
@@ -98,107 +105,142 @@ function scorePhoto(photo: SitePhoto, recentlyUsedIds: Set<string>): number {
 export async function runWeeklyAgent(agentRunId: string): Promise<WeeklyAgentResult> {
   await prisma.socialAgentRun.update({
     where: { id: agentRunId },
-    data: { status: "RUNNING", startedAt: new Date() },
+    data:  { status: "RUNNING", startedAt: new Date() },
   });
 
   try {
-    const settings      = await prisma.socialAgentSettings.findFirst();
-    const postTarget    = settings?.weeklyPostTarget ?? 3;
-    const reelTarget    = settings?.weeklyReelTarget ?? 2;
+    const settings    = await prisma.socialAgentSettings.findFirst();
+    const postTarget  = settings?.weeklyPostTarget ?? 3;
+    const reelTarget  = settings?.weeklyReelTarget ?? 2;
     const settingsPayload = settings
       ? { defaultHashtags: settings.defaultHashtags, brandVoice: settings.brandVoice, approvalRequired: settings.approvalRequired }
       : null;
 
-    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 86_400_000);
 
-    // ── 1. Try DetailJob-first approach ───────────────────────────────────────
+    // ── 0. Fetch active, non-expired TrendInsights for caption shaping ─────────
 
-    // Find job IDs used in drafts from the past 14 days (via their photos' job)
+    const activeTrends = await prisma.trendInsight.findMany({
+      where: {
+        isActive: true,
+        OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+      },
+      orderBy: [{ confidenceScore: "desc" }, { popularityScore: "desc" }],
+    });
+
+    // ── 1. Find recently-used job/photo IDs (rotation guard) ──────────────────
+
     const recentDraftMedia = await prisma.socialContentMedia.findMany({
       where: { draft: { createdAt: { gte: fourteenDaysAgo } } },
       select: { sitePhoto: { select: { detailJobId: true, id: true } } },
     });
-    const recentlyUsedJobIds   = new Set(
+    const recentlyUsedJobIds = new Set(
       recentDraftMedia.map((m) => m.sitePhoto?.detailJobId).filter(Boolean) as string[]
     );
     const recentlyUsedPhotoIds = new Set(
       recentDraftMedia.map((m) => m.sitePhoto?.id).filter(Boolean) as string[]
     );
 
-    // Fetch all DetailJobs that have at least one photo
-    const allJobs = await prisma.detailJob.findMany({
-      include: { photos: true },
-    });
-    const jobsWithPhotos = allJobs.filter((j) => j.photos.length > 0);
+    // ── 2. Fetch all DetailJobs with full context ──────────────────────────────
 
-    // Score and rank jobs
+    const allJobs = await prisma.detailJob.findMany({
+      include: {
+        photos:  true,
+        client:  { select: { fullName: true } },
+        vehicle: { select: { year: true, make: true, model: true, color: true } },
+      },
+    });
+
+    const jobsWithPhotos = allJobs.filter((j) => j.photos.length > 0) as JobWithContext[];
+
+    // Safety guard: if any jobs have assigned photos, never fall back to unassigned photos.
+    // Mixing job-context and non-job content produces confusing drafts.
+    const hasJobMedia = jobsWithPhotos.length > 0;
+
     const rankedJobs = jobsWithPhotos
       .map((j) => ({ job: j, score: scoreJob(j, recentlyUsedJobIds) }))
       .sort((a, b) => b.score - a.score);
 
     const usedJobIds   = new Set<string>();
     const usedPhotoIds = new Set<string>();
-    let postsCreated   = 0;
-    let reelsCreated   = 0;
+    let   postsCreated = 0;
+    let   reelsCreated = 0;
     const now          = new Date();
 
     const angleKeys = CONTENT_ANGLES.map((a) => a.key);
     const ctaKeys   = CTA_STYLES.map((c) => c.key);
 
-    // Pick photos from a job — type-appropriate first, then relax
-    const pickFromJob = (job: JobWithPhotos, count: number, preferReel: boolean): SitePhoto[] => {
+    // Pick photos from a single job — type-appropriate first, then relax to any
+    const pickFromJob = (job: JobWithContext, count: number, preferReel: boolean): SitePhoto[] => {
       const unused = job.photos.filter((p) => !usedPhotoIds.has(p.id));
       let pool = preferReel
         ? unused.filter((p) => p.isReelCandidate || p.isSocialReady || p.isFavoriteForSocial)
         : unused.filter((p) => p.isPostCandidate  || p.isSocialReady || p.isFavoriteForSocial);
       if (pool.length < count) pool = unused;
-      if (pool.length === 0)   pool = job.photos; // tiny library fallback
+      if (pool.length === 0)   pool = job.photos; // tiny-library fallback within same job
       return pool.slice(0, count);
     };
 
-    // ── Generate posts ────────────────────────────────────────────────────────
+    // ── 3. Generate posts from ranked jobs ────────────────────────────────────
 
     for (let i = 0; i < postTarget; i++) {
-      // Find next unused job with enough photos
       const candidate = rankedJobs.find(
         ({ job }) => !usedJobIds.has(job.id) && job.photos.length >= 1
       );
-
       if (!candidate) break;
-      const { job } = candidate;
-      const photos  = pickFromJob(job, 2, false);
+
+      const { job }  = candidate;
+      const photos   = pickFromJob(job, 2, false);
       if (photos.length === 0) break;
 
       const contentAngle = angleKeys[i % angleKeys.length];
       const ctaStyle     = ctaKeys[i % ctaKeys.length];
+      const trendInsight = activeTrends.length > 0 ? activeTrends[i % activeTrends.length] : null;
 
-      const serviceTypes = [job.serviceType, ...photos.flatMap((p) => p.serviceType ? [p.serviceType] : [])].filter(Boolean) as string[];
+      const serviceTypes = [
+        job.serviceType,
+        ...photos.flatMap((p) => (p.serviceType ? [p.serviceType] : [])),
+      ].filter(Boolean) as string[];
 
       const content = generateDraftContent({
-        contentType: "POST",
+        contentType:    "POST",
         contentAngle,
         ctaStyle,
-        mediaCount:   photos.length,
+        mediaCount:     photos.length,
         serviceTypes,
-        settings:     settingsPayload,
+        vehicleInfo:    job.vehicle,
+        clientName:     job.client?.fullName,
+        jobServiceType: job.serviceType,
+        jobDate:        job.jobDate ? new Date(job.jobDate).toLocaleDateString("en-US") : undefined,
+        mediaLabels:    photos.map((p) => p.label).filter(Boolean) as string[],
+        trendInsight:   trendInsight
+          ? {
+              id:                 trendInsight.id,
+              title:              trendInsight.title,
+              exampleHook:        trendInsight.exampleHook,
+              exampleCaptionAngle: trendInsight.exampleCaptionAngle,
+              hashtags:           trendInsight.hashtags,
+              suggestedUse:       trendInsight.suggestedUse,
+            }
+          : null,
+        settings: settingsPayload,
       });
 
       await prisma.socialContentDraft.create({
         data: {
-          type:        "POST",
-          status:      "NEEDS_APPROVAL",
-          source:      "AUTO_AGENT",
+          type:          "POST",
+          status:        "NEEDS_APPROVAL",
+          source:        "AUTO_AGENT",
           agentRunId,
-          detailJobId: job.id,
-          generatedAt: now,
-          title:       content.title,
-          caption:     content.caption,
-          hashtags:    content.hashtags,
-          hook:        content.hook,
-          notes:       content.notes,
-          media: {
-            create: photos.map((p, idx) => ({ sitePhotoId: p.id, sortOrder: idx })),
-          },
+          detailJobId:   job.id,
+          trendInsightId: trendInsight?.id ?? undefined,
+          generatedAt:   now,
+          title:         content.title,
+          caption:       content.caption,
+          hashtags:      content.hashtags,
+          hook:          content.hook,
+          notes:         content.notes,
+          media: { create: photos.map((p, idx) => ({ sitePhotoId: p.id, sortOrder: idx })) },
         },
       });
 
@@ -207,50 +249,69 @@ export async function runWeeklyAgent(agentRunId: string): Promise<WeeklyAgentRes
       postsCreated++;
     }
 
-    // ── Generate reels ────────────────────────────────────────────────────────
+    // ── 4. Generate reels from ranked jobs ────────────────────────────────────
 
     for (let i = 0; i < reelTarget; i++) {
-      // Reels can reuse the same job if it has enough photos
+      // Reels can reuse the same job when it has enough unused photos
       const candidate = rankedJobs.find(
-        ({ job }) => job.photos.filter((p) => !usedPhotoIds.has(p.id)).length >= 2 ||
-                     job.photos.length >= 3
+        ({ job }) =>
+          job.photos.filter((p) => !usedPhotoIds.has(p.id)).length >= 2 ||
+          job.photos.length >= 3
       );
-
       if (!candidate) break;
-      const { job } = candidate;
-      const photos  = pickFromJob(job, 3, true);
+
+      const { job }  = candidate;
+      const photos   = pickFromJob(job, 3, true);
       if (photos.length === 0) break;
 
       const contentAngle = angleKeys[(postTarget + i) % angleKeys.length];
       const ctaStyle     = ctaKeys[(i + 2) % ctaKeys.length];
+      const trendInsight = activeTrends.length > 0 ? activeTrends[(postTarget + i) % activeTrends.length] : null;
 
-      const serviceTypes = [job.serviceType, ...photos.flatMap((p) => p.serviceType ? [p.serviceType] : [])].filter(Boolean) as string[];
+      const serviceTypes = [
+        job.serviceType,
+        ...photos.flatMap((p) => (p.serviceType ? [p.serviceType] : [])),
+      ].filter(Boolean) as string[];
 
       const content = generateDraftContent({
-        contentType: "REEL",
+        contentType:    "REEL",
         contentAngle,
         ctaStyle,
-        mediaCount:   photos.length,
+        mediaCount:     photos.length,
         serviceTypes,
-        settings:     settingsPayload,
+        vehicleInfo:    job.vehicle,
+        clientName:     job.client?.fullName,
+        jobServiceType: job.serviceType,
+        jobDate:        job.jobDate ? new Date(job.jobDate).toLocaleDateString("en-US") : undefined,
+        mediaLabels:    photos.map((p) => p.label).filter(Boolean) as string[],
+        trendInsight:   trendInsight
+          ? {
+              id:                 trendInsight.id,
+              title:              trendInsight.title,
+              exampleHook:        trendInsight.exampleHook,
+              exampleCaptionAngle: trendInsight.exampleCaptionAngle,
+              hashtags:           trendInsight.hashtags,
+              suggestedUse:       trendInsight.suggestedUse,
+            }
+          : null,
+        settings: settingsPayload,
       });
 
       await prisma.socialContentDraft.create({
         data: {
-          type:        "REEL",
-          status:      "NEEDS_APPROVAL",
-          source:      "AUTO_AGENT",
+          type:          "REEL",
+          status:        "NEEDS_APPROVAL",
+          source:        "AUTO_AGENT",
           agentRunId,
-          detailJobId: job.id,
-          generatedAt: now,
-          title:       content.title,
-          caption:     content.caption,
-          hashtags:    content.hashtags,
-          hook:        content.hook,
-          notes:       content.notes,
-          media: {
-            create: photos.map((p, idx) => ({ sitePhotoId: p.id, sortOrder: idx })),
-          },
+          detailJobId:   job.id,
+          trendInsightId: trendInsight?.id ?? undefined,
+          generatedAt:   now,
+          title:         content.title,
+          caption:       content.caption,
+          hashtags:      content.hashtags,
+          hook:          content.hook,
+          notes:         content.notes,
+          media: { create: photos.map((p, idx) => ({ sitePhotoId: p.id, sortOrder: idx })) },
         },
       });
 
@@ -259,15 +320,13 @@ export async function runWeeklyAgent(agentRunId: string): Promise<WeeklyAgentRes
       reelsCreated++;
     }
 
-    // ── 2. Fallback: unassigned photos (no DetailJob) ─────────────────────────
+    // ── 5. Fallback: unassigned photos — only when zero jobs exist ─────────────
     //
-    // If job-based generation didn't hit the targets, fall back to the original
-    // photo-based approach using unassigned photos.
+    // Safety guard: if jobs with photos exist, we never mix in unassigned media.
+    // Mixing job-context and context-free photos produces inconsistent drafts.
 
-    if (postsCreated < postTarget || reelsCreated < reelTarget) {
-      const allPhotos = await prisma.sitePhoto.findMany({
-        where: { detailJobId: null },
-      });
+    if (!hasJobMedia && (postsCreated < postTarget || reelsCreated < reelTarget)) {
+      const allPhotos = await prisma.sitePhoto.findMany({ where: { detailJobId: null } });
 
       if (allPhotos.length > 0) {
         const rankedPhotos = allPhotos
@@ -288,13 +347,18 @@ export async function runWeeklyAgent(agentRunId: string): Promise<WeeklyAgentRes
           const photos = pickPhoto(2, false);
           if (photos.length === 0) break;
 
-          const i          = postsCreated;
+          const i            = postsCreated;
           const contentAngle = angleKeys[i % angleKeys.length];
           const ctaStyle     = ctaKeys[i % ctaKeys.length];
+          const trendInsight = activeTrends.length > 0 ? activeTrends[i % activeTrends.length] : null;
 
           const content = generateDraftContent({
             contentType: "POST", contentAngle, ctaStyle, mediaCount: photos.length,
-            serviceTypes: photos.flatMap((p) => p.serviceType ? [p.serviceType] : []),
+            serviceTypes: photos.flatMap((p) => (p.serviceType ? [p.serviceType] : [])),
+            mediaLabels:  photos.map((p) => p.label).filter(Boolean) as string[],
+            trendInsight: trendInsight
+              ? { id: trendInsight.id, title: trendInsight.title, exampleHook: trendInsight.exampleHook, exampleCaptionAngle: trendInsight.exampleCaptionAngle, hashtags: trendInsight.hashtags }
+              : null,
             settings: settingsPayload,
           });
 
@@ -302,6 +366,7 @@ export async function runWeeklyAgent(agentRunId: string): Promise<WeeklyAgentRes
             data: {
               type: "POST", status: "NEEDS_APPROVAL", source: "AUTO_AGENT",
               agentRunId, generatedAt: now,
+              trendInsightId: trendInsight?.id ?? undefined,
               title: content.title, caption: content.caption,
               hashtags: content.hashtags, hook: content.hook, notes: content.notes,
               media: { create: photos.map((p, idx) => ({ sitePhotoId: p.id, sortOrder: idx })) },
@@ -316,13 +381,18 @@ export async function runWeeklyAgent(agentRunId: string): Promise<WeeklyAgentRes
           const photos = pickPhoto(3, true);
           if (photos.length === 0) break;
 
-          const i          = reelsCreated;
+          const i            = reelsCreated;
           const contentAngle = angleKeys[(postTarget + i) % angleKeys.length];
           const ctaStyle     = ctaKeys[(i + 2) % ctaKeys.length];
+          const trendInsight = activeTrends.length > 0 ? activeTrends[(postTarget + i) % activeTrends.length] : null;
 
           const content = generateDraftContent({
             contentType: "REEL", contentAngle, ctaStyle, mediaCount: photos.length,
-            serviceTypes: photos.flatMap((p) => p.serviceType ? [p.serviceType] : []),
+            serviceTypes: photos.flatMap((p) => (p.serviceType ? [p.serviceType] : [])),
+            mediaLabels:  photos.map((p) => p.label).filter(Boolean) as string[],
+            trendInsight: trendInsight
+              ? { id: trendInsight.id, title: trendInsight.title, exampleHook: trendInsight.exampleHook, exampleCaptionAngle: trendInsight.exampleCaptionAngle, hashtags: trendInsight.hashtags }
+              : null,
             settings: settingsPayload,
           });
 
@@ -330,6 +400,7 @@ export async function runWeeklyAgent(agentRunId: string): Promise<WeeklyAgentRes
             data: {
               type: "REEL", status: "NEEDS_APPROVAL", source: "AUTO_AGENT",
               agentRunId, generatedAt: now,
+              trendInsightId: trendInsight?.id ?? undefined,
               title: content.title, caption: content.caption,
               hashtags: content.hashtags, hook: content.hook, notes: content.notes,
               media: { create: photos.map((p, idx) => ({ sitePhotoId: p.id, sortOrder: idx })) },
@@ -342,29 +413,29 @@ export async function runWeeklyAgent(agentRunId: string): Promise<WeeklyAgentRes
       }
     }
 
-    // ── 3. Bail if nothing was generated ──────────────────────────────────────
+    // ── 6. Bail if nothing was generated ──────────────────────────────────────
 
     if (postsCreated === 0 && reelsCreated === 0) {
+      const reason = hasJobMedia
+        ? "Jobs exist but none had enough social-ready photos. Mark jobs as Social Ready and ensure they have at least 2 photos."
+        : "No media in library. Upload photos via Import Media first.";
+
       await prisma.socialAgentRun.update({
         where: { id: agentRunId },
-        data: {
-          status: "FAILED",
-          completedAt: new Date(),
-          errorMessage: "No media in library. Upload photos via Import Media first.",
-        },
+        data:  { status: "FAILED", completedAt: new Date(), errorMessage: reason },
       });
-      return { runId: agentRunId, postsCreated: 0, reelsCreated: 0, mediaUsed: 0, error: "No media in library." };
+      return { runId: agentRunId, postsCreated: 0, reelsCreated: 0, mediaUsed: 0, error: reason };
     }
 
     await prisma.socialAgentRun.update({
       where: { id: agentRunId },
       data: {
-        status:        "COMPLETED",
-        completedAt:   new Date(),
-        draftsCreated: postsCreated + reelsCreated,
+        status:         "COMPLETED",
+        completedAt:    new Date(),
+        draftsCreated:  postsCreated + reelsCreated,
         postsGenerated: postsCreated,
         reelsGenerated: reelsCreated,
-        mediaReviewed: usedPhotoIds.size,
+        mediaReviewed:  usedPhotoIds.size,
       },
     });
 
@@ -374,7 +445,7 @@ export async function runWeeklyAgent(agentRunId: string): Promise<WeeklyAgentRes
     const message = err instanceof Error ? err.message : "Unknown error";
     await prisma.socialAgentRun.update({
       where: { id: agentRunId },
-      data: { status: "FAILED", completedAt: new Date(), errorMessage: message },
+      data:  { status: "FAILED", completedAt: new Date(), errorMessage: message },
     });
     return { runId: agentRunId, postsCreated: 0, reelsCreated: 0, mediaUsed: 0, error: message };
   }

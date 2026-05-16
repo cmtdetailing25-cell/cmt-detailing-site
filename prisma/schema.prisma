@@ -56,6 +56,30 @@ enum SocialAgentRunStatus {
   FAILED
 }
 
+enum TrendCategory {
+  MOBILE_DETAILING
+  CERAMIC_COATING
+  PAINT_CORRECTION
+  INTERIOR_DETAILING
+  EXTERIOR_DETAILING
+  BEFORE_AFTER_TRANSFORMATIONS
+  SEASONAL_PROTECTION
+  CUSTOMER_EDUCATION
+  LUXURY_CAR_CARE
+  LOCAL_BUSINESS_MARKETING
+}
+
+enum TrendType {
+  HASHTAG
+  CONTENT_FORMAT
+  CAPTION_STYLE
+  REEL_STRUCTURE
+  AUDIO_IDEA
+  SEASONAL_TOPIC
+  LOCAL_TREND
+  COMPETITOR_INSPIRATION
+}
+
 // ─── Client / Vehicle / DetailJob models ─────────────────────────────────────
 
 model Client {
@@ -232,6 +256,9 @@ model SocialContentDraft {
   detailJobId String?
   detailJob   DetailJob?      @relation(fields: [detailJobId], references: [id])
 
+  trendInsightId String?
+  trendInsight   TrendInsight? @relation(fields: [trendInsightId], references: [id])
+
   media SocialContentMedia[]
 }
 
@@ -271,4 +298,55 @@ model SocialAgentSettings {
   nextGenerationAt      DateTime?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+}
+
+// ─── Trend Intelligence ───────────────────────────────────────────────────────
+//
+// TrendSource: named origin (Meta Creator Studio, manual entry, RSS feed, etc.)
+// TrendInsight: an actionable trend idea with hooks, angles, hashtags, and scores.
+//   Insights are referenced by the Weekly Agent v2 to shape caption angles.
+//
+// Future research sources (not yet implemented):
+//   - Meta/Instagram Graph API (official, safest)
+//   - Approved third-party trend providers (e.g. Metricool, Later)
+//   - Public RSS/web sources where terms of service permit
+//   - Manual entry (current phase)
+// Do NOT add scraping or browser automation to these models.
+
+model TrendSource {
+  id        String   @id @default(cuid())
+  name      String
+  type      String
+  url       String?
+  isActive  Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  insights TrendInsight[]
+}
+
+model TrendInsight {
+  id                  String        @id @default(cuid())
+  title               String
+  platform            String
+  source              String?
+  category            TrendCategory
+  trendType           TrendType
+  summary             String?
+  suggestedUse        String?
+  exampleHook         String?
+  exampleCaptionAngle String?
+  hashtags            String?
+  confidenceScore     Int           @default(5)
+  popularityScore     Int           @default(5)
+  isActive            Boolean       @default(true)
+  expiresAt           DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  trendSourceId String?
+  trendSource   TrendSource? @relation(fields: [trendSourceId], references: [id])
+
+  drafts SocialContentDraft[]
 }
