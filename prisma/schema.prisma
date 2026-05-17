@@ -147,6 +147,7 @@ model DetailJob {
   internalNotes  String?
   socialSummary  String?
   price          Float?
+  leadId         String?
   isSocialReady  Boolean   @default(false)
   isFeatured     Boolean   @default(false)
   createdAt      DateTime  @default(now())
@@ -154,6 +155,7 @@ model DetailJob {
 
   client       Client?              @relation(fields: [clientId], references: [id])
   vehicle      Vehicle?             @relation(fields: [vehicleId], references: [id])
+  lead         Lead?                @relation(fields: [leadId], references: [id])
   photos       SitePhoto[]
   socialDrafts SocialContentDraft[]
 }
@@ -182,8 +184,9 @@ model Lead {
   vehicleCondition String?
   notes            String?
 
-  clientId String?
-  client   Client? @relation(fields: [clientId], references: [id])
+  clientId   String?
+  client     Client?     @relation(fields: [clientId], references: [id])
+  detailJobs DetailJob[]
 }
 
 // ─── Admin Notifications ──────────────────────────────────────────────────────
@@ -194,6 +197,8 @@ model AdminNotification {
   title            String
   message          String
   isRead           Boolean  @default(false)
+  isArchived       Boolean  @default(false)
+  actionUrl        String?
   relatedBookingId String?
   relatedClientId  String?
   relatedVehicleId String?

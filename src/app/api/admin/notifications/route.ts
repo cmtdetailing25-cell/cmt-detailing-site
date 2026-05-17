@@ -6,16 +6,22 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const unreadOnly = searchParams.get("unreadOnly") === "true";
-    const take = Math.min(parseInt(searchParams.get("take") ?? "50", 10), 100);
+    const unreadOnly   = searchParams.get("unreadOnly") === "true";
+    const includeArchived = searchParams.get("includeArchived") === "true";
+    const take = Math.min(parseInt(searchParams.get("take") ?? "30", 10), 100);
 
     const notifications = await prisma.adminNotification.findMany({
-      where: unreadOnly ? { isRead: false } : undefined,
+      where: {
+        ...(unreadOnly ? { isRead: false } : {}),
+        ...(!includeArchived ? { isArchived: false } : {}),
+      },
       orderBy: { createdAt: "desc" },
       take,
     });
 
-    const unreadCount = await prisma.adminNotification.count({ where: { isRead: false } });
+    const unreadCount = await prisma.adminNotification.count({
+      where: { isRead: false, isArchived: false },
+    });
 
     return NextResponse.json({ notifications, unreadCount });
   } catch (err) {
@@ -28,7 +34,7 @@ export async function GET(req: NextRequest) {
 export async function PATCH() {
   try {
     await prisma.adminNotification.updateMany({
-      where: { isRead: false },
+      where: { isRead: false, isArchived: false },
       data: { isRead: true },
     });
     return NextResponse.json({ ok: true });

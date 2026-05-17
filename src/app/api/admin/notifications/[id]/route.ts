@@ -6,10 +6,16 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { isRead } = await req.json();
+    const body = await req.json();
+    const { isRead, isArchived } = body;
+
+    const data: Record<string, boolean> = {};
+    if (isRead     !== undefined) data.isRead     = isRead     === true;
+    if (isArchived !== undefined) data.isArchived = isArchived === true;
+
     const notification = await prisma.adminNotification.update({
       where: { id: params.id },
-      data: { isRead: isRead ?? true },
+      data,
     });
     return NextResponse.json({ notification });
   } catch (err) {
