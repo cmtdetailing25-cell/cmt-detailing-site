@@ -11,6 +11,7 @@ const navLinks = [
   { href: "/admin/jobs",         label: "Jobs"         },
   { href: "/admin/media",        label: "Media"        },
   { href: "/admin/social",       label: "Social Agent" },
+  { href: "/admin/automation",   label: "Automation"   },
 ];
 
 export default function AdminNav() {

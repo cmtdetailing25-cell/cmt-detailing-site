@@ -109,6 +109,7 @@ model Client {
   vehicles   Vehicle[]
   detailJobs DetailJob[]
   leads      Lead[]
+  campaigns  MarketingCampaign[]
 }
 
 model Vehicle {
@@ -129,6 +130,7 @@ model Vehicle {
 
   client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   detailJobs DetailJob[]
+  campaigns  MarketingCampaign[]
 }
 
 model DetailJob {
@@ -158,6 +160,7 @@ model DetailJob {
   lead         Lead?                @relation(fields: [leadId], references: [id])
   photos       SitePhoto[]
   socialDrafts SocialContentDraft[]
+  campaigns    MarketingCampaign[]
 }
 
 // ─── Existing models ──────────────────────────────────────────────────────────
@@ -411,5 +414,178 @@ model TrendInsight {
   trendSourceId String?
   trendSource   TrendSource? @relation(fields: [trendSourceId], references: [id])
 
-  drafts SocialContentDraft[]
+  drafts    SocialContentDraft[]
+  campaigns MarketingCampaign[]
+}
+
+// ─── Marketing Automation enums ───────────────────────────────────────────────
+
+enum CampaignType {
+  ORGANIC_POST
+  REEL
+  VIDEO_AD
+  META_AD
+  STORY
+  CAROUSEL
+}
+
+enum CampaignStatus {
+  IDEA
+  TREND_REVIEW
+  STRATEGY_PENDING_APPROVAL
+  CREATIVE_PENDING
+  CREATIVE_PENDING_APPROVAL
+  APPROVED_TO_PUBLISH
+  PUBLISHED
+  ACTIVE_AD
+  COMPLETED
+  ARCHIVED
+  FAILED
+}
+
+enum AssetType {
+  IMAGE
+  CANVA_DESIGN
+  REMOTION_VIDEO
+  FINAL_VIDEO
+  FINAL_IMAGE
+  COPY_DOC
+}
+
+enum AssetProvider {
+  VERCEL_BLOB
+  CANVA
+  REMOTION
+  META
+  N8N
+}
+
+enum AssetStatus {
+  PENDING
+  READY
+  APPROVED
+  REJECTED
+}
+
+enum AutomationWorkflowType {
+  TREND_RESEARCH
+  CLAUDE_STRATEGY
+  CANVA_ASSET_CREATION
+  REMOTION_VIDEO_CREATION
+  META_PUBLISHING
+  META_AD_CREATION
+  PERFORMANCE_SYNC
+}
+
+enum AutomationRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// ─── Marketing Automation models ──────────────────────────────────────────────
+
+model AutomationSettings {
+  id                         String   @id @default(cuid())
+  n8nBaseUrl                 String?
+  socialWorkflowWebhookUrl   String?
+  trendWorkflowWebhookUrl    String?
+  canvaWorkflowWebhookUrl    String?
+  remotionWorkflowWebhookUrl String?
+  metaAdsWorkflowWebhookUrl  String?
+  webhookSecret              String?
+  isEnabled                  Boolean  @default(false)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+}
+
+model MarketingCampaign {
+  id                    String         @id @default(cuid())
+  type                  CampaignType
+  status                CampaignStatus @default(IDEA)
+  title                 String
+  goal                  String?
+  platform              String?
+  campaignBrief         String?
+  approvedStrategy      String?
+  approvedCaption       String?
+  approvedHashtags      String?
+  approvedCreativeNotes String?
+  budget                Float?
+  startDate             DateTime?
+  endDate               DateTime?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  detailJobId    String?
+  clientId       String?
+  vehicleId      String?
+  trendInsightId String?
+
+  detailJob    DetailJob?    @relation(fields: [detailJobId], references: [id])
+  client       Client?       @relation(fields: [clientId], references: [id])
+  vehicle      Vehicle?      @relation(fields: [vehicleId], references: [id])
+  trendInsight TrendInsight? @relation(fields: [trendInsightId], references: [id])
+
+  assets           MarketingAsset[]
+  workflowRuns     AutomationWorkflowRun[]
+  performanceStats MarketingPerformanceStat[]
+}
+
+model MarketingAsset {
+  id           String        @id @default(cuid())
+  campaignId   String
+  type         AssetType
+  provider     AssetProvider
+  url          String?
+  thumbnailUrl String?
+  title        String
+  notes        String?
+  status       AssetStatus   @default(PENDING)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  campaign MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+}
+
+model AutomationWorkflowRun {
+  id             String                 @id @default(cuid())
+  campaignId     String?
+  workflowType   AutomationWorkflowType
+  status         AutomationRunStatus    @default(PENDING)
+  n8nExecutionId String?
+  inputPayload   Json?
+  outputPayload  Json?
+  errorMessage   String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  campaign MarketingCampaign? @relation(fields: [campaignId], references: [id])
+}
+
+model MarketingPerformanceStat {
+  id          String   @id @default(cuid())
+  campaignId  String
+  platform    String
+  postUrl     String?
+  impressions Int      @default(0)
+  reach       Int      @default(0)
+  views       Int      @default(0)
+  likes       Int      @default(0)
+  comments    Int      @default(0)
+  shares      Int      @default(0)
+  saves       Int      @default(0)
+  clicks      Int      @default(0)
+  leads       Int      @default(0)
+  spend       Float    @default(0)
+  costPerLead Float?
+  date        DateTime
+  rawData     Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaign MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 }
