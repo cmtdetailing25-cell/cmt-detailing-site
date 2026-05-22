@@ -3,38 +3,25 @@ import { prisma } from "@/lib/prisma";
 import { validateCallbackSecret } from "@/lib/automation";
 
 // n8n calls this when Claude strategy is ready.
-// Body: { campaignId, executionId?, strategy, caption?, hashtags?, creativeNotes? }
+// Body: { campaignId, workflowRunId?, executionId?, strategy, caption?, hashtags?, creativeNotes? }
 // strategy may arrive as an object, a JSON string, or the broken "[object Object]".
 
 export const dynamic = "force-dynamic";
 
-// Attempt to normalise `raw` into a plain object.
-// Returns null only when the value is genuinely absent or un-parseable.
 function parseStrategy(raw: unknown): Record<string, unknown> | null {
   if (raw === null || raw === undefined) return null;
-
-  // Already an object — most common when n8n uses the HTTP Request node correctly
-  if (typeof raw === "object" && !Array.isArray(raw)) {
-    return raw as Record<string, unknown>;
-  }
-
+  if (typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
   if (typeof raw === "string") {
-    // Attempt JSON parse first
     try {
       const parsed = JSON.parse(raw);
-      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
     } catch {
-      // Not valid JSON — treat the raw string as a plain-text summary
       return { summary: raw };
     }
   }
-
   return null;
 }
 
-// Safely convert any value to a trimmed string (or null if empty).
 function str(val: unknown): string | null {
   if (val === null || val === undefined) return null;
   if (typeof val === "string")  return val.trim() || null;
@@ -43,12 +30,10 @@ function str(val: unknown): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  // ── Secret validation (unchanged) ─────────────────────────────────────────
   if (!await validateCallbackSecret(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // ── Parse body ─────────────────────────────────────────────────────────────
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -60,66 +45,47 @@ export async function POST(req: NextRequest) {
 
   const {
     campaignId,
-    executionId,
-    strategy:     rawStrategy,
-    caption:      rawCaption,
-    hashtags:     rawHashtags,
-    creativeNotes:rawCreativeNotes,
+    workflowRunId: rawWorkflowRunId,
+    executionId:   rawExecutionId,
+    strategy:      rawStrategy,
+    caption:       rawCaption,
+    hashtags:      rawHashtags,
+    creativeNotes: rawCreativeNotes,
   } = body;
 
   // ── Validate campaignId ────────────────────────────────────────────────────
   if (!campaignId) {
-    return NextResponse.json(
-      { error: "campaignId is required and must be a string", received: campaignId },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "campaignId is required", received: campaignId }, { status: 400 });
   }
+  const cleanCampaignId  = String(campaignId).trim();
+  const cleanRunId       = typeof rawWorkflowRunId === "string" ? rawWorkflowRunId.trim() : null;
+  const cleanExecutionId = typeof rawExecutionId   === "string" ? rawExecutionId.trim()   : null;
 
-  const cleanCampaignId = String(campaignId).trim();
-
-  console.log("[strategy callback] campaignId debug:", {
-    received:    campaignId,
-    type:        typeof campaignId,
-    length:      typeof campaignId === "string" ? campaignId.length : String(campaignId).length,
-    cleanLength: cleanCampaignId.length,
-    clean:       cleanCampaignId,
-  });
+  console.log("[strategy callback] IDs:", { cleanCampaignId, cleanRunId, cleanExecutionId });
 
   // ── Guard against n8n's "[object Object]" bug ──────────────────────────────
   if (rawStrategy === "[object Object]") {
-    return NextResponse.json(
-      {
-        error:    'strategy arrived as "[object Object]"',
-        guidance: "n8n did not serialise the Claude output correctly. " +
-                  "In the n8n workflow, add a Code or Set node that calls " +
-                  "JSON.stringify() on the Claude response before sending it here.",
-      },
-      { status: 400 }
-    );
+    return NextResponse.json({
+      error:    'strategy arrived as "[object Object]"',
+      guidance: "Add a Code node in n8n that calls JSON.stringify() on the Claude response before the HTTP Request node.",
+    }, { status: 400 });
   }
 
-  // ── Parse strategy ─────────────────────────────────────────────────────────
+  // ── Parse strategy and extract fields ─────────────────────────────────────
   const strategy = parseStrategy(rawStrategy);
-
-  // If strategy is absent, fall back to building a minimal object from body fields
   const effectiveStrategy: Record<string, unknown> | null =
-    strategy ?? (
-      rawCaption || rawHashtags || rawCreativeNotes
-        ? { caption: rawCaption, hashtags: rawHashtags, notes: rawCreativeNotes }
-        : null
-    );
+    strategy ?? (rawCaption || rawHashtags || rawCreativeNotes
+      ? { caption: rawCaption, hashtags: rawHashtags, notes: rawCreativeNotes }
+      : null);
 
-  // ── Extract individual fields ───────────────────────────────────────────────
-  // Explicit top-level field wins; fall back to strategy sub-fields
-  const caption      = str(rawCaption)      ?? str(strategy?.caption);
-  const hashtags     = str(rawHashtags)     ?? str(strategy?.hashtags);
+  const caption       = str(rawCaption)      ?? str(strategy?.caption);
+  const hashtags      = str(rawHashtags)     ?? str(strategy?.hashtags);
   const creativeNotes =
-    str(rawCreativeNotes)     ??
-    str(strategy?.hook)       ??
+    str(rawCreativeNotes) ??
+    str(strategy?.hook)   ??
     str(strategy?.adminNotes) ??
     null;
 
-  // Store strategy as a JSON string so it survives the String? column
   const strategyToStore =
     effectiveStrategy
       ? JSON.stringify(effectiveStrategy)
@@ -127,43 +93,64 @@ export async function POST(req: NextRequest) {
         ? rawStrategy
         : null;
 
-  console.log("[strategy callback] Resolved fields:", {
-    cleanCampaignId,
-    executionId,
-    hasStrategy:      !!strategyToStore,
-    hasCaption:       !!caption,
-    hasHashtags:      !!hashtags,
-    hasCreativeNotes: !!creativeNotes,
+  console.log("[strategy callback] Resolved:", {
+    hasStrategy: !!strategyToStore, hasCaption: !!caption,
+    hasHashtags: !!hashtags, hasCreativeNotes: !!creativeNotes,
   });
 
   // ── DB update ──────────────────────────────────────────────────────────────
   try {
-    // Diagnostic queries — log total count and sample IDs before the lookup
-    const [totalCount, sampleCampaigns] = await Promise.all([
-      prisma.marketingCampaign.count(),
-      prisma.marketingCampaign.findMany({ select: { id: true, title: true }, take: 10 }),
-    ]);
-    console.log("[strategy callback] DB state:", {
-      totalCampaigns: totalCount,
-      sampleIds: sampleCampaigns.map((c) => ({ id: c.id, title: c.title })),
-    });
-
     const campaign = await prisma.marketingCampaign.findUnique({ where: { id: cleanCampaignId } });
-    console.log("[strategy callback] findUnique result:", campaign ? { id: campaign.id, title: campaign.title, status: campaign.status } : null);
 
     if (!campaign) {
-      return NextResponse.json(
-        {
-          error:                "Campaign not found",
-          receivedCampaignId:   campaignId,
-          cleanCampaignId,
-          idLength:             cleanCampaignId.length,
-          availableCampaignIds: sampleCampaigns.map((c) => c.id),
-        },
-        { status: 404 }
-      );
+      const sample = await prisma.marketingCampaign.findMany({ select: { id: true, title: true }, take: 10 });
+      return NextResponse.json({
+        error: "Campaign not found",
+        cleanCampaignId,
+        availableCampaignIds: sample.map((c) => c.id),
+      }, { status: 404 });
     }
 
+    // ── Resolve the matching workflow run (triple fallback) ────────────────
+    // 1. Direct run ID we sent in the payload — most reliable
+    // 2. n8n execution ID stored on the run
+    // 3. Latest RUNNING or PENDING CLAUDE_STRATEGY run for this campaign
+
+    let runUpdated = 0;
+    const runData = { status: "COMPLETED" as const, outputPayload: body as never, completedAt: new Date() };
+
+    if (cleanRunId) {
+      const r = await prisma.automationWorkflowRun.updateMany({
+        where: { id: cleanRunId, campaignId: cleanCampaignId },
+        data:  runData,
+      });
+      runUpdated = r.count;
+    }
+
+    if (runUpdated === 0 && cleanExecutionId) {
+      const r = await prisma.automationWorkflowRun.updateMany({
+        where: { n8nExecutionId: cleanExecutionId },
+        data:  runData,
+      });
+      runUpdated = r.count;
+    }
+
+    if (runUpdated === 0) {
+      // Fallback: mark the most recent active CLAUDE_STRATEGY run for this campaign
+      const r = await prisma.automationWorkflowRun.updateMany({
+        where: {
+          campaignId:   cleanCampaignId,
+          workflowType: "CLAUDE_STRATEGY",
+          status:       { in: ["RUNNING", "PENDING"] },
+        },
+        data: runData,
+      });
+      runUpdated = r.count;
+    }
+
+    console.log("[strategy callback] Run update:", { cleanRunId, cleanExecutionId, runUpdated });
+
+    // ── Update campaign ────────────────────────────────────────────────────
     await Promise.all([
       prisma.marketingCampaign.update({
         where: { id: cleanCampaignId },
@@ -175,14 +162,6 @@ export async function POST(req: NextRequest) {
           approvedCreativeNotes: creativeNotes,
         },
       }),
-
-      typeof executionId === "string" && executionId
-        ? prisma.automationWorkflowRun.updateMany({
-            where: { n8nExecutionId: executionId },
-            data:  { status: "COMPLETED", outputPayload: body as never, completedAt: new Date() },
-          })
-        : Promise.resolve(),
-
       prisma.adminNotification.create({
         data: {
           type:      "STRATEGY_READY",
@@ -194,8 +173,9 @@ export async function POST(req: NextRequest) {
     ]);
 
     return NextResponse.json({
-      ok:             true,
+      ok: true,
       cleanCampaignId,
+      runUpdated,
       fieldsSet: {
         strategy:      !!strategyToStore,
         caption:       !!caption,
@@ -205,12 +185,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[callback/strategy] Prisma error:", err);
-    return NextResponse.json(
-      {
-        error:  "Database update failed",
-        detail: err instanceof Error ? err.message : String(err),
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      error:  "Database update failed",
+      detail: err instanceof Error ? err.message : String(err),
+    }, { status: 500 });
   }
 }

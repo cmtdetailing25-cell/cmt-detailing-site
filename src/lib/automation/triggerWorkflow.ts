@@ -4,11 +4,14 @@ import { AutomationWorkflowType, CampaignStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 
 interface TriggerOptions {
-  campaignId:     string;
-  workflowType:   AutomationWorkflowType;
-  webhookUrlKey:  keyof Awaited<ReturnType<typeof getAutomationSettings>>;
+  campaignId:        string;
+  workflowType:      AutomationWorkflowType;
+  webhookUrlKey:     keyof Awaited<ReturnType<typeof getAutomationSettings>>;
   newCampaignStatus?: CampaignStatus;
-  buildPayload:   (campaign: NonNullable<Awaited<ReturnType<typeof loadCampaign>>>, callbackBase: string) => Record<string, unknown>;
+  buildPayload: (
+    campaign:     NonNullable<Awaited<ReturnType<typeof loadCampaign>>>,
+    callbackBase: string,
+  ) => Record<string, unknown>;
 }
 
 async function loadCampaign(id: string) {
@@ -45,20 +48,39 @@ export async function triggerWorkflow(opts: TriggerOptions) {
   }
 
   const callbackBase = getCallbackBaseUrl();
-  const payload = buildPayload(campaign, callbackBase);
 
-  // Create run record
+  // ── Close any prior RUNNING/PENDING runs for this campaign ─────────────────
+  // Prevents stale "RUNNING" runs showing in the UI after moving to the next step
+  await prisma.automationWorkflowRun.updateMany({
+    where: {
+      campaignId,
+      status: { in: ["RUNNING", "PENDING"] },
+    },
+    data: { status: "COMPLETED", completedAt: new Date() },
+  });
+
+  // ── Create the new run record (without workflowRunId in payload yet) ───────
   const run = await prisma.automationWorkflowRun.create({
     data: {
       campaignId,
       workflowType,
-      status:       "PENDING",
-      inputPayload: payload as never,
-      startedAt:    new Date(),
+      status:    "PENDING",
+      startedAt: new Date(),
     },
   });
 
-  // Update campaign status
+  // ── Build payload and enrich with workflowRunId ────────────────────────────
+  // n8n must echo workflowRunId back in the callback so we can mark this run COMPLETED
+  const basePayload     = buildPayload(campaign, callbackBase);
+  const enrichedPayload = { ...basePayload, workflowRunId: run.id };
+
+  // Persist the full payload (including workflowRunId) for debugging
+  await prisma.automationWorkflowRun.update({
+    where: { id: run.id },
+    data:  { inputPayload: enrichedPayload as never },
+  });
+
+  // ── Update campaign status ─────────────────────────────────────────────────
   if (newCampaignStatus) {
     await prisma.marketingCampaign.update({
       where: { id: campaignId },
@@ -66,16 +88,16 @@ export async function triggerWorkflow(opts: TriggerOptions) {
     });
   }
 
-  // Call n8n
-  const result = await callN8nWebhook(webhookUrl, payload, settings.webhookSecret ?? "");
+  // ── Call n8n ───────────────────────────────────────────────────────────────
+  const result = await callN8nWebhook(webhookUrl, enrichedPayload, settings.webhookSecret ?? "");
 
-  // Update run
+  // ── Update run with n8n response ───────────────────────────────────────────
   await prisma.automationWorkflowRun.update({
     where: { id: run.id },
     data: {
-      status:        result.ok ? "RUNNING" : "FAILED",
+      status:         result.ok ? "RUNNING" : "FAILED",
       n8nExecutionId: (result.data as Record<string, string> | null)?.executionId ?? null,
-      errorMessage:  result.ok ? null : `n8n returned HTTP ${result.status}`,
+      errorMessage:   result.ok ? null : `n8n returned HTTP ${result.status}`,
     },
   });
 
