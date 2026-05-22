@@ -23,7 +23,7 @@ export interface CampaignRow {
   client: { id: string; fullName: string } | null;
   trendInsight: { id: string; title: string } | null;
   assets: Array<{ id: string; type: string; status: string; url: string | null; thumbnailUrl: string | null; title: string }>;
-  latestRun: { id: string; status: string; workflowType: string; createdAt: string; errorMessage: string | null } | null;
+  latestRun: { id: string; status: string; workflowType: string; createdAt: string; completedAt: string | null; errorMessage: string | null } | null;
   latestStats: { impressions: number; reach: number; likes: number; spend: number; leads: number } | null;
 }
 
@@ -151,14 +151,34 @@ function getNextAction(c: CampaignRow): CampaignAction | null {
   }
 }
 
-// ── Stuck detection (running/pending run older than 10 min) ───────────────────
+// ── Derived workflow state ────────────────────────────────────────────────────
+// Single source of truth for all run-state-derived booleans on a campaign card.
+// A run is only "processing" if it has no completedAt — guards against stale
+// RUNNING/PENDING records left over from prior test runs.
 
-function isStuck(c: CampaignRow): boolean {
-  const run = c.latestRun;
-  if (!run) return false;
-  if (run.status !== "RUNNING" && run.status !== "PENDING") return false;
-  return Date.now() - new Date(run.createdAt).getTime() > 10 * 60 * 1000;
+interface WorkflowState {
+  isProcessing:      boolean; // actively running in n8n right now
+  isCompleted:       boolean; // last run finished successfully
+  isStuck:           boolean; // processing AND older than 10 min
+  latestWorkflowState: string | null;
 }
+
+function deriveWorkflowState(c: CampaignRow): WorkflowState {
+  const run = c.latestRun;
+  if (!run) return { isProcessing: false, isCompleted: false, isStuck: false, latestWorkflowState: null };
+
+  const runActive = (run.status === "RUNNING" || run.status === "PENDING") && run.completedAt === null;
+  const stuck     = runActive && Date.now() - new Date(run.createdAt).getTime() > 10 * 60 * 1000;
+
+  return {
+    isProcessing:      runActive,
+    isCompleted:       run.status === "COMPLETED",
+    isStuck:           stuck,
+    latestWorkflowState: run.status,
+  };
+}
+
+function isStuck(c: CampaignRow): boolean { return deriveWorkflowState(c).isStuck; }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -184,7 +204,7 @@ type ManageAction = "archive" | "delete" | "reset" | "cancel" | "markTest";
 function CardMenu({ campaign, onAction }: { campaign: CampaignRow; onAction: (a: ManageAction) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const isRunning = campaign.latestRun?.status === "RUNNING" || campaign.latestRun?.status === "PENDING";
+  const { isProcessing } = deriveWorkflowState(campaign);
 
   useEffect(() => {
     if (!open) return;
@@ -218,7 +238,7 @@ function CardMenu({ campaign, onAction }: { campaign: CampaignRow; onAction: (a:
         <div className="absolute right-0 top-6 z-30 bg-[#151b23] border border-[#434e56] rounded-xl shadow-2xl w-44 py-1 overflow-hidden">
           {campaign.status !== "ARCHIVED" && <button className={item} onClick={() => act("archive")}>Archive</button>}
           {campaign.status !== "IDEA"     && <button className={item} onClick={() => act("reset")}>Reset to IDEA</button>}
-          {isRunning                       && <button className={item} onClick={() => act("cancel")}>Cancel Processing</button>}
+          {isProcessing                    && <button className={item} onClick={() => act("cancel")}>Cancel Processing</button>}
           <button className={item} onClick={() => act("markTest")}>
             {campaign.isTest ? "Unmark as Test" : "Mark as Test"}
           </button>
@@ -243,15 +263,13 @@ function CampaignCard({
   isSelected:     boolean;
   onSelect:       (v: boolean) => void;
 }) {
-  const action    = getNextAction(campaign);
-  const runStatus = campaign.latestRun?.status;
-  const isRunning = runStatus === "RUNNING" || runStatus === "PENDING";
-  const stuck     = isRunning && isStuck(campaign);
-  const hasFailed = runStatus === "FAILED" && !!campaign.latestRun?.errorMessage;
+  const action = getNextAction(campaign);
+  const { isProcessing, isStuck: stuck, latestWorkflowState } = deriveWorkflowState(campaign);
+  const hasFailed = latestWorkflowState === "FAILED" && !!campaign.latestRun?.errorMessage;
   const needsAttn = campaign.status === "STRATEGY_PENDING_APPROVAL" || campaign.status === "CREATIVE_PENDING_APPROVAL";
   const hasStrategy =
     campaign.status === "STRATEGY_PENDING_APPROVAL" &&
-    (campaign.approvedCaption || campaign.approvedStrategy || campaign.approvedHashtags);
+    !!(campaign.approvedCaption || campaign.approvedStrategy || campaign.approvedHashtags);
 
   const btnCls =
     action?.variant === "amber" ? "bg-amber-600 hover:bg-amber-500 text-white" :
@@ -259,11 +277,11 @@ function CampaignCard({
                                   "bg-[#1e2730] hover:bg-[#2d3840] text-[#94b2b6] border border-[#434e56]";
 
   const borderCls =
-    stuck      ? "border-orange-800/50" :
-    isRunning  ? "border-yellow-800/40" :
-    needsAttn  ? "border-amber-800/40"  :
-    isSelected ? "border-[#94b2b6]/50"  :
-                 "border-[#2d3840]";
+    stuck        ? "border-orange-800/50" :
+    isProcessing ? "border-yellow-800/40" :
+    needsAttn    ? "border-amber-800/40"  :
+    isSelected   ? "border-[#94b2b6]/50"  :
+                   "border-[#2d3840]";
 
   return (
     <div className={`bg-[#151b23] border rounded-xl p-4 flex flex-col gap-0 relative ${borderCls}${isSelected ? " ring-1 ring-[#94b2b6]/20" : ""}`}>
@@ -333,7 +351,7 @@ function CampaignCard({
       )}
 
       {/* ── Processing state (non-stuck) ──────────────────────────── */}
-      {isRunning && !stuck && (
+      {isProcessing && !stuck && (
         <div className="flex items-center gap-2.5 bg-yellow-950/30 border border-yellow-800/30 rounded-lg px-3 py-2.5 mb-3">
           <div className="w-3.5 h-3.5 rounded-full border-2 border-yellow-400 border-t-transparent animate-spin shrink-0" />
           <div>
@@ -343,12 +361,12 @@ function CampaignCard({
         </div>
       )}
 
-      {/* ── Run status line (non-running) ─────────────────────────── */}
-      {campaign.latestRun && !isRunning && (
+      {/* ── Run status line (not processing) ──────────────────────── */}
+      {campaign.latestRun && !isProcessing && (
         <div className="flex items-center gap-1.5 mb-3">
-          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${runStatus === "COMPLETED" ? "bg-green-500" : runStatus === "FAILED" ? "bg-red-500" : "bg-gray-600"}`} />
+          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${latestWorkflowState === "COMPLETED" ? "bg-green-500" : latestWorkflowState === "FAILED" ? "bg-red-500" : "bg-gray-600"}`} />
           <span className="text-[10px] text-[#708289]">
-            {campaign.latestRun.workflowType.replace(/_/g, " ")} · {runStatus?.toLowerCase()}
+            {campaign.latestRun.workflowType.replace(/_/g, " ")} · {latestWorkflowState?.toLowerCase()}
           </span>
         </div>
       )}
@@ -377,12 +395,13 @@ function CampaignCard({
         </div>
       )}
 
-      {msg && (
+      {/* Only show msg when not actively processing — prevents "Done ✓" + spinner coexisting */}
+      {msg && !isProcessing && (
         <p className={`text-[10px] mb-2 ${msg.type === "success" ? "text-green-400" : "text-red-400"}`}>{msg.text}</p>
       )}
 
       {/* Action button (hidden while processing) */}
-      {!isRunning && action && (
+      {!isProcessing && action && (
         <button
           onClick={() => onAction(action)}
           disabled={loading}
@@ -441,11 +460,9 @@ export default function AutomationHubClient({
     }
   }, []);
 
-  // Poll every 3 s while any campaign has an active workflow run
+  // Poll every 3 s while any campaign is actively processing (RUNNING/PENDING with no completedAt)
   useEffect(() => {
-    const hasActive = campaigns.some(
-      (c) => c.latestRun?.status === "RUNNING" || c.latestRun?.status === "PENDING"
-    );
+    const hasActive = campaigns.some((c) => deriveWorkflowState(c).isProcessing);
     if (!hasActive) return;
     const timer = setTimeout(refresh, 3000);
     return () => clearTimeout(timer);

@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
       orderBy: { updatedAt: "desc" },
       include: {
         assets:           { orderBy: { createdAt: "desc" }, take: 3, select: { id: true, type: true, status: true, url: true, thumbnailUrl: true, title: true } },
-        workflowRuns:     { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, status: true, workflowType: true, createdAt: true, errorMessage: true } },
+        workflowRuns:     { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, status: true, workflowType: true, createdAt: true, completedAt: true, errorMessage: true } },
         performanceStats: { orderBy: { date: "desc" }, take: 1, select: { impressions: true, reach: true, likes: true, spend: true, leads: true } },
         client:           { select: { id: true, fullName: true } },
         trendInsight:     { select: { id: true, title: true } },
@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
             status:       c.workflowRuns[0].status,
             workflowType: c.workflowRuns[0].workflowType,
             createdAt:    c.workflowRuns[0].createdAt.toISOString(),
+            completedAt:  c.workflowRuns[0].completedAt?.toISOString() ?? null,
             errorMessage: c.workflowRuns[0].errorMessage,
           }
         : null,

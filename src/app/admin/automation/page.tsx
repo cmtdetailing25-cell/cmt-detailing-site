@@ -17,7 +17,7 @@ export default async function AutomationPage() {
         workflowRuns: {
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { id: true, status: true, workflowType: true, createdAt: true, errorMessage: true },
+          select: { id: true, status: true, workflowType: true, createdAt: true, completedAt: true, errorMessage: true },
         },
         performanceStats: {
           orderBy: { date: "desc" },
@@ -76,6 +76,7 @@ export default async function AutomationPage() {
           status:       c.workflowRuns[0].status,
           workflowType: c.workflowRuns[0].workflowType,
           createdAt:    c.workflowRuns[0].createdAt.toISOString(),
+          completedAt:  c.workflowRuns[0].completedAt?.toISOString() ?? null,
           errorMessage: c.workflowRuns[0].errorMessage,
         }
       : null,
