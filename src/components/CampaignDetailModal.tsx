@@ -302,7 +302,8 @@ export default function CampaignDetailModal({ campaignId, onClose }: Props) {
                 <p className="text-[10px] text-[#708289] uppercase tracking-wider font-semibold mb-2">n8n Callback Routes</p>
                 <div className="space-y-1">
                   {[
-                    { path: "/api/automation/callback/strategy",             note: "Sets strategy + moves to CREATIVE_PENDING" },
+                    { path: "/api/automation/callback/trends",               note: "Stores trend research · stays TREND_REVIEW" },
+                    { path: "/api/automation/callback/strategy",             note: "Sets strategy · moves to STRATEGY_PENDING_APPROVAL" },
                     { path: "/api/automation/callback/assets",               note: "Adds Canva/Remotion assets" },
                     { path: "/api/automation/callback/remotion-video",       note: "Adds rendered video asset" },
                     { path: "/api/automation/callback/publish-confirmation", note: "Marks PUBLISHED or ACTIVE_AD" },
