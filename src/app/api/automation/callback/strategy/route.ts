@@ -68,12 +68,22 @@ export async function POST(req: NextRequest) {
   } = body;
 
   // ── Validate campaignId ────────────────────────────────────────────────────
-  if (!campaignId || typeof campaignId !== "string") {
+  if (!campaignId) {
     return NextResponse.json(
       { error: "campaignId is required and must be a string", received: campaignId },
       { status: 400 }
     );
   }
+
+  const cleanCampaignId = String(campaignId).trim();
+
+  console.log("[strategy callback] campaignId debug:", {
+    received:    campaignId,
+    type:        typeof campaignId,
+    length:      typeof campaignId === "string" ? campaignId.length : String(campaignId).length,
+    cleanLength: cleanCampaignId.length,
+    clean:       cleanCampaignId,
+  });
 
   // ── Guard against n8n's "[object Object]" bug ──────────────────────────────
   if (rawStrategy === "[object Object]") {
@@ -118,7 +128,7 @@ export async function POST(req: NextRequest) {
         : null;
 
   console.log("[strategy callback] Resolved fields:", {
-    campaignId,
+    cleanCampaignId,
     executionId,
     hasStrategy:      !!strategyToStore,
     hasCaption:       !!caption,
@@ -128,17 +138,35 @@ export async function POST(req: NextRequest) {
 
   // ── DB update ──────────────────────────────────────────────────────────────
   try {
-    const campaign = await prisma.marketingCampaign.findUnique({ where: { id: campaignId } });
+    // Diagnostic queries — log total count and sample IDs before the lookup
+    const [totalCount, sampleCampaigns] = await Promise.all([
+      prisma.marketingCampaign.count(),
+      prisma.marketingCampaign.findMany({ select: { id: true, title: true }, take: 10 }),
+    ]);
+    console.log("[strategy callback] DB state:", {
+      totalCampaigns: totalCount,
+      sampleIds: sampleCampaigns.map((c) => ({ id: c.id, title: c.title })),
+    });
+
+    const campaign = await prisma.marketingCampaign.findUnique({ where: { id: cleanCampaignId } });
+    console.log("[strategy callback] findUnique result:", campaign ? { id: campaign.id, title: campaign.title, status: campaign.status } : null);
+
     if (!campaign) {
       return NextResponse.json(
-        { error: "Campaign not found", campaignId },
+        {
+          error:                "Campaign not found",
+          receivedCampaignId:   campaignId,
+          cleanCampaignId,
+          idLength:             cleanCampaignId.length,
+          availableCampaignIds: sampleCampaigns.map((c) => c.id),
+        },
         { status: 404 }
       );
     }
 
     await Promise.all([
       prisma.marketingCampaign.update({
-        where: { id: campaignId },
+        where: { id: cleanCampaignId },
         data: {
           status:                "STRATEGY_PENDING_APPROVAL",
           approvedStrategy:      strategyToStore,
@@ -166,8 +194,8 @@ export async function POST(req: NextRequest) {
     ]);
 
     return NextResponse.json({
-      ok:          true,
-      campaignId,
+      ok:             true,
+      cleanCampaignId,
       fieldsSet: {
         strategy:      !!strategyToStore,
         caption:       !!caption,
