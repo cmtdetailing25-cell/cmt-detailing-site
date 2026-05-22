@@ -55,6 +55,10 @@ export default async function AutomationPage() {
     budget:       c.budget,
     createdAt:    c.createdAt.toISOString(),
     updatedAt:    c.updatedAt.toISOString(),
+    approvedStrategy:      c.approvedStrategy,
+    approvedCaption:       c.approvedCaption,
+    approvedHashtags:      c.approvedHashtags,
+    approvedCreativeNotes: c.approvedCreativeNotes,
     client:       c.client,
     trendInsight: c.trendInsight,
     assets:       c.assets.map((a) => ({

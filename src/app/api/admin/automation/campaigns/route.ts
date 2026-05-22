@@ -9,22 +9,50 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get("status");
     const type   = searchParams.get("type");
 
-    const campaigns = await prisma.marketingCampaign.findMany({
+    const rows = await prisma.marketingCampaign.findMany({
       where: {
         ...(status ? { status: status as never } : {}),
         ...(type   ? { type:   type   as never } : {}),
       },
       orderBy: { updatedAt: "desc" },
       include: {
-        assets:           { orderBy: { createdAt: "desc" }, take: 3 },
-        workflowRuns:     { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, status: true, workflowType: true, createdAt: true } },
-        performanceStats: { orderBy: { date: "desc" }, take: 1, select: { impressions: true, reach: true, likes: true, spend: true } },
+        assets:           { orderBy: { createdAt: "desc" }, take: 3, select: { id: true, type: true, status: true, url: true, thumbnailUrl: true, title: true } },
+        workflowRuns:     { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, status: true, workflowType: true, createdAt: true, errorMessage: true } },
+        performanceStats: { orderBy: { date: "desc" }, take: 1, select: { impressions: true, reach: true, likes: true, spend: true, leads: true } },
         client:           { select: { id: true, fullName: true } },
-        detailJob:        { select: { id: true, title: true } },
-        trendInsight:     { select: { id: true, title: true, category: true } },
-        _count:           { select: { assets: true, workflowRuns: true, performanceStats: true } },
+        trendInsight:     { select: { id: true, title: true } },
       },
     });
+
+    // Serialize into the CampaignRow shape the client expects
+    const campaigns = rows.map((c) => ({
+      id:                    c.id,
+      type:                  c.type,
+      status:                c.status,
+      title:                 c.title,
+      goal:                  c.goal,
+      platform:              c.platform,
+      budget:                c.budget,
+      createdAt:             c.createdAt.toISOString(),
+      updatedAt:             c.updatedAt.toISOString(),
+      approvedStrategy:      c.approvedStrategy,
+      approvedCaption:       c.approvedCaption,
+      approvedHashtags:      c.approvedHashtags,
+      approvedCreativeNotes: c.approvedCreativeNotes,
+      client:                c.client,
+      trendInsight:          c.trendInsight,
+      assets:                c.assets,
+      latestRun: c.workflowRuns[0]
+        ? {
+            id:           c.workflowRuns[0].id,
+            status:       c.workflowRuns[0].status,
+            workflowType: c.workflowRuns[0].workflowType,
+            createdAt:    c.workflowRuns[0].createdAt.toISOString(),
+            errorMessage: c.workflowRuns[0].errorMessage,
+          }
+        : null,
+      latestStats: c.performanceStats[0] ?? null,
+    }));
 
     return NextResponse.json({ campaigns });
   } catch (err) {

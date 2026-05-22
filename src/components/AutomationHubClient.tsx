@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import CreateCampaignModal from "./CreateCampaignModal";
 import AutomationSettingsModal, { type LiveAutomationSettings } from "./AutomationSettingsModal";
 import CampaignDetailModal from "./CampaignDetailModal";
@@ -15,6 +15,11 @@ export interface CampaignRow {
   id: string; type: CT; status: CS; title: string;
   goal: string | null; platform: string | null; budget: number | null;
   createdAt: string; updatedAt: string;
+  // strategy/copy fields — populated by the n8n strategy callback
+  approvedStrategy:      string | null;
+  approvedCaption:       string | null;
+  approvedHashtags:      string | null;
+  approvedCreativeNotes: string | null;
   client: { id: string; fullName: string } | null;
   trendInsight: { id: string; title: string } | null;
   assets: Array<{ id: string; type: string; status: string; url: string | null; thumbnailUrl: string | null; title: string }>;
@@ -59,7 +64,7 @@ interface Props {
 const STATUS_LABEL: Record<CS, string> = {
   IDEA:                       "Idea",
   TREND_REVIEW:               "Trend Review",
-  STRATEGY_PENDING_APPROVAL:  "Needs Strategy Approval",
+  STRATEGY_PENDING_APPROVAL:  "Strategy Ready — Review",
   CREATIVE_PENDING:           "Creative Pending",
   CREATIVE_PENDING_APPROVAL:  "Needs Creative Approval",
   APPROVED_TO_PUBLISH:        "Approved to Publish",
@@ -194,8 +199,18 @@ function CampaignCard({
   onAction:  (action: CampaignAction) => void;
   onDetail:  () => void;
 }) {
-  const action     = getNextAction(campaign);
+  const action = getNextAction(campaign);
+
+  // Derive run state — drives loading and error UI
+  const runStatus  = campaign.latestRun?.status;
+  const isRunning  = runStatus === "RUNNING" || runStatus === "PENDING";
+  const hasFailed  = runStatus === "FAILED"  && campaign.latestRun?.errorMessage;
   const needsAttn  = campaign.status === "STRATEGY_PENDING_APPROVAL" || campaign.status === "CREATIVE_PENDING_APPROVAL";
+
+  // Strategy content — shown on STRATEGY_PENDING_APPROVAL cards when present
+  const hasStrategy =
+    campaign.status === "STRATEGY_PENDING_APPROVAL" &&
+    (campaign.approvedCaption || campaign.approvedStrategy || campaign.approvedHashtags);
 
   const btnCls =
     action?.variant === "amber"   ? "bg-amber-600 hover:bg-amber-500 text-white" :
@@ -203,7 +218,12 @@ function CampaignCard({
                                     "bg-[#1e2730] hover:bg-[#2d3840] text-[#94b2b6] border border-[#434e56]";
 
   return (
-    <div className={`bg-[#151b23] border rounded-xl p-4 ${needsAttn ? "border-amber-800/40" : "border-[#2d3840]"}`}>
+    <div className={`bg-[#151b23] border rounded-xl p-4 flex flex-col gap-0 ${
+      isRunning   ? "border-yellow-800/40" :
+      needsAttn   ? "border-amber-800/40"  :
+                    "border-[#2d3840]"
+    }`}>
+
       {/* Type + status */}
       <div className="flex items-center gap-1.5 mb-2.5">
         <span className="text-[10px] bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider">
@@ -232,24 +252,74 @@ function CampaignCard({
         {campaign.client && <span className="text-[10px] text-[#708289]">{campaign.client.fullName}</span>}
       </div>
 
-      {campaign.latestRun && (
+      {/* ── Processing / loading state ─────────────────────────────── */}
+      {isRunning && (
+        <div className="flex items-center gap-2.5 bg-yellow-950/30 border border-yellow-800/30 rounded-lg px-3 py-2.5 mb-3">
+          <div className="w-3.5 h-3.5 rounded-full border-2 border-yellow-400 border-t-transparent animate-spin shrink-0" />
+          <div>
+            <p className="text-xs text-yellow-300 font-medium">Processing in n8n…</p>
+            <p className="text-[10px] text-yellow-700">
+              {campaign.latestRun!.workflowType.replace(/_/g, " ")} · auto-refreshing
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Workflow run status line (non-running) ────────────────── */}
+      {campaign.latestRun && !isRunning && (
         <div className="flex items-center gap-1.5 mb-3">
           <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-            campaign.latestRun.status === "COMPLETED" ? "bg-green-500" :
-            campaign.latestRun.status === "RUNNING"   ? "bg-yellow-400 animate-pulse" :
-            campaign.latestRun.status === "FAILED"    ? "bg-red-500" : "bg-gray-600"
+            runStatus === "COMPLETED" ? "bg-green-500" :
+            runStatus === "FAILED"    ? "bg-red-500"   : "bg-gray-600"
           }`} />
           <span className="text-[10px] text-[#708289]">
-            {campaign.latestRun.workflowType.replace(/_/g, " ")} · {campaign.latestRun.status.toLowerCase()}
+            {campaign.latestRun.workflowType.replace(/_/g, " ")} · {runStatus?.toLowerCase()}
           </span>
         </div>
       )}
 
-      {msg && (
-        <p className={`text-[10px] mb-2 ${msg.type === "success" ? "text-green-400" : "text-red-400"}`}>{msg.text}</p>
+      {/* ── Error state ───────────────────────────────────────────── */}
+      {hasFailed && (
+        <div className="bg-red-950/30 border border-red-900/40 rounded-lg px-3 py-2.5 mb-3">
+          <p className="text-xs text-red-400 font-medium">Workflow failed</p>
+          <p className="text-[10px] text-red-600 mt-0.5 line-clamp-2">
+            {campaign.latestRun!.errorMessage}
+          </p>
+        </div>
       )}
 
-      {action && (
+      {/* ── Generated strategy preview ────────────────────────────── */}
+      {hasStrategy && (
+        <div className="bg-[#0e1520] border border-[#2d3840] rounded-xl p-3 mb-3">
+          <p className="text-[10px] text-[#94b2b6] uppercase tracking-wider font-semibold mb-2">
+            Generated Strategy
+          </p>
+          {campaign.approvedStrategy && (
+            <p className="text-xs text-[#e9f0ef] leading-relaxed line-clamp-3 mb-2">
+              {campaign.approvedStrategy}
+            </p>
+          )}
+          {campaign.approvedCaption && (
+            <p className="text-xs text-[#708289] italic line-clamp-2 mb-1.5">
+              &ldquo;{campaign.approvedCaption}&rdquo;
+            </p>
+          )}
+          {campaign.approvedHashtags && (
+            <p className="text-[10px] text-[#94b2b6]/70 line-clamp-1">
+              {campaign.approvedHashtags}
+            </p>
+          )}
+        </div>
+      )}
+
+      {msg && (
+        <p className={`text-[10px] mb-2 ${msg.type === "success" ? "text-green-400" : "text-red-400"}`}>
+          {msg.text}
+        </p>
+      )}
+
+      {/* ── Action button — hidden while n8n is processing ───────── */}
+      {!isRunning && action && (
         <button
           onClick={() => onAction(action)}
           disabled={loading}
@@ -259,7 +329,7 @@ function CampaignCard({
         </button>
       )}
 
-      {/* Details button */}
+      {/* Details link */}
       <button
         onClick={onDetail}
         className="w-full mt-2 text-[11px] text-[#708289] hover:text-[#94b2b6] py-1.5 rounded-lg transition-colors border border-transparent hover:border-[#2d3840]"
@@ -267,6 +337,7 @@ function CampaignCard({
         View details &amp; runs →
       </button>
 
+      {/* Performance stats — live campaigns */}
       {campaign.latestStats && (campaign.status === "PUBLISHED" || campaign.status === "ACTIVE_AD") && (
         <div className="grid grid-cols-3 gap-1.5 mt-2 pt-3 border-t border-[#2d3840]">
           {[
@@ -309,6 +380,16 @@ export default function AutomationHubClient({
       setCampaigns(data.campaigns);
     }
   }, []);
+
+  // Poll every 3 s while any campaign has an active workflow run
+  useEffect(() => {
+    const hasActive = campaigns.some(
+      (c) => c.latestRun?.status === "RUNNING" || c.latestRun?.status === "PENDING"
+    );
+    if (!hasActive) return;
+    const timer = setTimeout(refresh, 3000);
+    return () => clearTimeout(timer);
+  }, [campaigns, refresh]);
 
   async function triggerAction(campaign: CampaignRow, action: CampaignAction) {
     if (action.confirm && !window.confirm(action.confirm)) return;
