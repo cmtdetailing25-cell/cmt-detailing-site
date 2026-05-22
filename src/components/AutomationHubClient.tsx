@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import CreateCampaignModal from "./CreateCampaignModal";
 import AutomationSettingsModal from "./AutomationSettingsModal";
+import CampaignDetailModal from "./CampaignDetailModal";
 
 type CS =
   | "IDEA" | "TREND_REVIEW" | "STRATEGY_PENDING_APPROVAL" | "CREATIVE_PENDING"
@@ -160,16 +161,38 @@ function getNextAction(c: CampaignRow): CampaignAction | null {
 
 // ── Campaign card ─────────────────────────────────────────────────────────────
 
+function CopyIdButton({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+  function copy(e: React.MouseEvent) {
+    e.stopPropagation();
+    navigator.clipboard.writeText(id).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+  return (
+    <button
+      onClick={copy}
+      title="Copy campaign ID"
+      className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#1e2730] border border-[#434e56] text-[#708289] hover:text-[#94b2b6] hover:border-[#94b2b6] transition-colors shrink-0"
+    >
+      {copied ? "✓" : "Copy ID"}
+    </button>
+  );
+}
+
 function CampaignCard({
   campaign,
   loading,
   msg,
   onAction,
+  onDetail,
 }: {
   campaign:  CampaignRow;
   loading:   boolean;
   msg:       { type: "success" | "error"; text: string } | undefined;
   onAction:  (action: CampaignAction) => void;
+  onDetail:  () => void;
 }) {
   const action     = getNextAction(campaign);
   const needsAttn  = campaign.status === "STRATEGY_PENDING_APPROVAL" || campaign.status === "CREATIVE_PENDING_APPROVAL";
@@ -196,6 +219,12 @@ function CampaignCard({
       {campaign.goal && (
         <p className="text-xs text-[#708289] truncate mb-2">{campaign.goal}</p>
       )}
+
+      {/* Campaign ID row */}
+      <div className="flex items-center gap-1.5 mb-3">
+        <code className="text-[10px] text-[#434e56] font-mono truncate flex-1">{campaign.id}</code>
+        <CopyIdButton id={campaign.id} />
+      </div>
 
       <div className="flex flex-wrap gap-x-2 gap-y-0.5 mb-3">
         {campaign.platform && <span className="text-[10px] text-[#708289]">{campaign.platform}</span>}
@@ -230,8 +259,16 @@ function CampaignCard({
         </button>
       )}
 
+      {/* Details button */}
+      <button
+        onClick={onDetail}
+        className="w-full mt-2 text-[11px] text-[#708289] hover:text-[#94b2b6] py-1.5 rounded-lg transition-colors border border-transparent hover:border-[#2d3840]"
+      >
+        View details &amp; runs →
+      </button>
+
       {campaign.latestStats && (campaign.status === "PUBLISHED" || campaign.status === "ACTIVE_AD") && (
-        <div className="grid grid-cols-3 gap-1.5 mt-3 pt-3 border-t border-[#2d3840]">
+        <div className="grid grid-cols-3 gap-1.5 mt-2 pt-3 border-t border-[#2d3840]">
           {[
             { label: "Reach", value: campaign.latestStats.reach.toLocaleString() },
             { label: "Likes", value: campaign.latestStats.likes.toLocaleString() },
@@ -256,11 +293,12 @@ export default function AutomationHubClient({
   initialAssets,
   initialSettings,
 }: Props) {
-  const [campaigns,       setCampaigns]       = useState<CampaignRow[]>(initialCampaigns);
-  const [showCreate,      setShowCreate]      = useState(false);
-  const [showSettings,    setShowSettings]    = useState(false);
-  const [actionLoading,   setActionLoading]   = useState<Record<string, boolean>>({});
-  const [actionMsg,       setActionMsg]       = useState<Record<string, { type: "success" | "error"; text: string }>>({});
+  const [campaigns,         setCampaigns]         = useState<CampaignRow[]>(initialCampaigns);
+  const [showCreate,        setShowCreate]        = useState(false);
+  const [showSettings,      setShowSettings]      = useState(false);
+  const [detailCampaignId,  setDetailCampaignId]  = useState<string | null>(null);
+  const [actionLoading,     setActionLoading]     = useState<Record<string, boolean>>({});
+  const [actionMsg,         setActionMsg]         = useState<Record<string, { type: "success" | "error"; text: string }>>({});
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/admin/automation/campaigns");
@@ -431,6 +469,7 @@ export default function AutomationHubClient({
                         loading={actionLoading[campaign.id] ?? false}
                         msg={actionMsg[campaign.id]}
                         onAction={(action) => triggerAction(campaign, action)}
+                        onDetail={() => setDetailCampaignId(campaign.id)}
                       />
                     ))}
                   </div>
@@ -556,6 +595,12 @@ export default function AutomationHubClient({
           }
           onClose={() => setShowSettings(false)}
           onSaved={() => setShowSettings(false)}
+        />
+      )}
+      {detailCampaignId && (
+        <CampaignDetailModal
+          campaignId={detailCampaignId}
+          onClose={() => setDetailCampaignId(null)}
         />
       )}
     </div>
