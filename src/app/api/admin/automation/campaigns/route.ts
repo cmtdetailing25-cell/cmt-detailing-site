@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
       approvedCaption:       c.approvedCaption,
       approvedHashtags:      c.approvedHashtags,
       approvedCreativeNotes: c.approvedCreativeNotes,
+      isTest:                c.isTest,
       client:                c.client,
       trendInsight:          c.trendInsight,
       assets:                c.assets,

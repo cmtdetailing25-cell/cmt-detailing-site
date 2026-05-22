@@ -512,6 +512,7 @@ model MarketingCampaign {
   approvedCaption       String?
   approvedHashtags      String?
   approvedCreativeNotes String?
+  isTest                Boolean        @default(false)
   budget                Float?
   startDate             DateTime?
   endDate               DateTime?
@@ -563,7 +564,7 @@ model AutomationWorkflowRun {
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
 
-  campaign MarketingCampaign? @relation(fields: [campaignId], references: [id])
+  campaign MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 }
 
 model MarketingPerformanceStat {

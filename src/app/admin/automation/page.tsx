@@ -59,6 +59,7 @@ export default async function AutomationPage() {
     approvedCaption:       c.approvedCaption,
     approvedHashtags:      c.approvedHashtags,
     approvedCreativeNotes: c.approvedCreativeNotes,
+    isTest:                c.isTest,
     client:       c.client,
     trendInsight: c.trendInsight,
     assets:       c.assets.map((a) => ({

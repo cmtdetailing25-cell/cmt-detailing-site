@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import CreateCampaignModal from "./CreateCampaignModal";
 import AutomationSettingsModal, { type LiveAutomationSettings } from "./AutomationSettingsModal";
 import CampaignDetailModal from "./CampaignDetailModal";
@@ -15,7 +15,7 @@ export interface CampaignRow {
   id: string; type: CT; status: CS; title: string;
   goal: string | null; platform: string | null; budget: number | null;
   createdAt: string; updatedAt: string;
-  // strategy/copy fields — populated by the n8n strategy callback
+  isTest: boolean;
   approvedStrategy:      string | null;
   approvedCaption:       string | null;
   approvedHashtags:      string | null;
@@ -105,24 +105,23 @@ const TYPE_LABEL: Record<CT, string> = {
   CAROUSEL:     "Carousel",
 };
 
-const PIPELINE_STAGES: { label: string; statuses: CS[]; amber?: boolean }[] = [
-  { label: "Ideas",           statuses: ["IDEA"]                                           },
-  { label: "Research",        statuses: ["TREND_REVIEW"]                                   },
-  { label: "Strategy Review", statuses: ["STRATEGY_PENDING_APPROVAL"], amber: true         },
-  { label: "Creative",        statuses: ["CREATIVE_PENDING", "CREATIVE_PENDING_APPROVAL"], amber: true },
-  { label: "Approved",        statuses: ["APPROVED_TO_PUBLISH"]                            },
-  { label: "Live",            statuses: ["PUBLISHED", "ACTIVE_AD"]                         },
-  { label: "Done",            statuses: ["COMPLETED", "ARCHIVED", "FAILED"]                },
+const PIPELINE_STAGES: { label: string; statuses: CS[]; amber?: boolean; muted?: boolean }[] = [
+  { label: "Ideas",           statuses: ["IDEA"]                                                        },
+  { label: "Research",        statuses: ["TREND_REVIEW"]                                                },
+  { label: "Strategy Review", statuses: ["STRATEGY_PENDING_APPROVAL"],            amber: true           },
+  { label: "Creative",        statuses: ["CREATIVE_PENDING", "CREATIVE_PENDING_APPROVAL"], amber: true  },
+  { label: "Approved",        statuses: ["APPROVED_TO_PUBLISH"]                                         },
+  { label: "Published",       statuses: ["PUBLISHED", "ACTIVE_AD"]                                      },
+  { label: "Completed",       statuses: ["COMPLETED"]                                                   },
+  { label: "Archived",        statuses: ["ARCHIVED"],                              muted: true           },
+  { label: "Failed",          statuses: ["FAILED"],                                muted: true           },
 ];
 
 // ── Next-action logic ─────────────────────────────────────────────────────────
 
 interface CampaignAction {
-  label:    string;
-  route:    string;
-  body:     Record<string, unknown>;
-  confirm?: string;
-  variant?: "amber" | "green" | "default";
+  label: string; route: string; body: Record<string, unknown>;
+  confirm?: string; variant?: "amber" | "green" | "default";
 }
 
 function getNextAction(c: CampaignRow): CampaignAction | null {
@@ -131,7 +130,7 @@ function getNextAction(c: CampaignRow): CampaignAction | null {
     case "IDEA":
       return { label: "Research Trends", route: "/api/admin/automation/run-trend-research", body: { campaignId: id } };
     case "TREND_REVIEW":
-      return { label: "Create Strategy",  route: "/api/admin/automation/create-strategy",       body: { campaignId: id } };
+      return { label: "Create Strategy", route: "/api/admin/automation/create-strategy", body: { campaignId: id } };
     case "STRATEGY_PENDING_APPROVAL":
       return { label: "Approve Strategy", route: `/api/admin/automation/campaigns/${id}/approve`, body: { stage: "strategy" }, variant: "amber" };
     case "CREATIVE_PENDING":
@@ -139,23 +138,11 @@ function getNextAction(c: CampaignRow): CampaignAction | null {
         ? { label: "Generate Video",        route: "/api/admin/automation/create-remotion-video", body: { campaignId: id } }
         : { label: "Generate Canva Assets", route: "/api/admin/automation/create-canva-assets",   body: { campaignId: id } };
     case "CREATIVE_PENDING_APPROVAL":
-      return { label: "Approve Creative",   route: `/api/admin/automation/campaigns/${id}/approve`, body: { stage: "creative" }, variant: "amber" };
+      return { label: "Approve Creative", route: `/api/admin/automation/campaigns/${id}/approve`, body: { stage: "creative" }, variant: "amber" };
     case "APPROVED_TO_PUBLISH":
       return c.type === "META_AD"
-        ? {
-            label:   "Create Meta Ad (Paused)",
-            route:   "/api/admin/automation/create-meta-ad",
-            body:    { campaignId: id },
-            confirm: "This sends a PAUSED ad campaign to Meta via n8n. You must activate it manually in Meta Ads Manager.",
-            variant: "green",
-          }
-        : {
-            label:   "Publish Campaign",
-            route:   "/api/admin/automation/publish-approved-campaign",
-            body:    { campaignId: id },
-            confirm: "This sends the approved campaign to n8n for publishing. Continue?",
-            variant: "green",
-          };
+        ? { label: "Create Meta Ad (Paused)", route: "/api/admin/automation/create-meta-ad", body: { campaignId: id }, confirm: "This sends a PAUSED ad campaign to Meta via n8n. You must activate it manually in Meta Ads Manager.", variant: "green" }
+        : { label: "Publish Campaign",        route: "/api/admin/automation/publish-approved-campaign", body: { campaignId: id }, confirm: "This sends the approved campaign to n8n for publishing. Continue?", variant: "green" };
     case "PUBLISHED":
     case "ACTIVE_AD":
       return { label: "Sync Performance", route: "/api/admin/automation/sync-performance", body: { campaignId: id } };
@@ -164,16 +151,22 @@ function getNextAction(c: CampaignRow): CampaignAction | null {
   }
 }
 
-// ── Campaign card ─────────────────────────────────────────────────────────────
+// ── Stuck detection (running/pending run older than 10 min) ───────────────────
+
+function isStuck(c: CampaignRow): boolean {
+  const run = c.latestRun;
+  if (!run) return false;
+  if (run.status !== "RUNNING" && run.status !== "PENDING") return false;
+  return Date.now() - new Date(run.createdAt).getTime() > 10 * 60 * 1000;
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function CopyIdButton({ id }: { id: string }) {
   const [copied, setCopied] = useState(false);
   function copy(e: React.MouseEvent) {
     e.stopPropagation();
-    navigator.clipboard.writeText(id).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
+    navigator.clipboard.writeText(id).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
   }
   return (
     <button
@@ -186,92 +179,174 @@ function CopyIdButton({ id }: { id: string }) {
   );
 }
 
+type ManageAction = "archive" | "delete" | "reset" | "cancel" | "markTest";
+
+function CardMenu({ campaign, onAction }: { campaign: CampaignRow; onAction: (a: ManageAction) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const isRunning = campaign.latestRun?.status === "RUNNING" || campaign.latestRun?.status === "PENDING";
+
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  function act(a: ManageAction) { setOpen(false); onAction(a); }
+
+  const item    = "w-full text-left px-3 py-1.5 text-xs text-[#e9f0ef] hover:bg-[#2d3840] transition-colors";
+  const danger  = "w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-950/30 transition-colors";
+
+  return (
+    <div ref={ref} className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="p-1 text-[#434e56] hover:text-[#708289] transition-colors rounded"
+        title="Campaign actions"
+      >
+        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="5" r="1.5" />
+          <circle cx="12" cy="12" r="1.5" />
+          <circle cx="12" cy="19" r="1.5" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-6 z-30 bg-[#151b23] border border-[#434e56] rounded-xl shadow-2xl w-44 py-1 overflow-hidden">
+          {campaign.status !== "ARCHIVED" && <button className={item} onClick={() => act("archive")}>Archive</button>}
+          {campaign.status !== "IDEA"     && <button className={item} onClick={() => act("reset")}>Reset to IDEA</button>}
+          {isRunning                       && <button className={item} onClick={() => act("cancel")}>Cancel Processing</button>}
+          <button className={item} onClick={() => act("markTest")}>
+            {campaign.isTest ? "Unmark as Test" : "Mark as Test"}
+          </button>
+          <div className="border-t border-[#2d3840] my-1" />
+          <button className={danger} onClick={() => act("delete")}>Delete Campaign</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CampaignCard({
-  campaign,
-  loading,
-  msg,
-  onAction,
-  onDetail,
+  campaign, loading, msg, onAction, onDetail, onManageAction, managing, isSelected, onSelect,
 }: {
-  campaign:  CampaignRow;
-  loading:   boolean;
-  msg:       { type: "success" | "error"; text: string } | undefined;
-  onAction:  (action: CampaignAction) => void;
-  onDetail:  () => void;
+  campaign:       CampaignRow;
+  loading:        boolean;
+  msg:            { type: "success" | "error"; text: string } | undefined;
+  onAction:       (action: CampaignAction) => void;
+  onDetail:       () => void;
+  onManageAction: (a: ManageAction) => void;
+  managing:       boolean;
+  isSelected:     boolean;
+  onSelect:       (v: boolean) => void;
 }) {
-  const action = getNextAction(campaign);
-
-  // Derive run state — drives loading and error UI
-  const runStatus  = campaign.latestRun?.status;
-  const isRunning  = runStatus === "RUNNING" || runStatus === "PENDING";
-  const hasFailed  = runStatus === "FAILED"  && campaign.latestRun?.errorMessage;
-  const needsAttn  = campaign.status === "STRATEGY_PENDING_APPROVAL" || campaign.status === "CREATIVE_PENDING_APPROVAL";
-
-  // Strategy content — shown on STRATEGY_PENDING_APPROVAL cards when present
+  const action    = getNextAction(campaign);
+  const runStatus = campaign.latestRun?.status;
+  const isRunning = runStatus === "RUNNING" || runStatus === "PENDING";
+  const stuck     = isRunning && isStuck(campaign);
+  const hasFailed = runStatus === "FAILED" && !!campaign.latestRun?.errorMessage;
+  const needsAttn = campaign.status === "STRATEGY_PENDING_APPROVAL" || campaign.status === "CREATIVE_PENDING_APPROVAL";
   const hasStrategy =
     campaign.status === "STRATEGY_PENDING_APPROVAL" &&
     (campaign.approvedCaption || campaign.approvedStrategy || campaign.approvedHashtags);
 
   const btnCls =
-    action?.variant === "amber"   ? "bg-amber-600 hover:bg-amber-500 text-white" :
-    action?.variant === "green"   ? "bg-green-700 hover:bg-green-600 text-white" :
-                                    "bg-[#1e2730] hover:bg-[#2d3840] text-[#94b2b6] border border-[#434e56]";
+    action?.variant === "amber" ? "bg-amber-600 hover:bg-amber-500 text-white" :
+    action?.variant === "green" ? "bg-green-700 hover:bg-green-600 text-white" :
+                                  "bg-[#1e2730] hover:bg-[#2d3840] text-[#94b2b6] border border-[#434e56]";
+
+  const borderCls =
+    stuck      ? "border-orange-800/50" :
+    isRunning  ? "border-yellow-800/40" :
+    needsAttn  ? "border-amber-800/40"  :
+    isSelected ? "border-[#94b2b6]/50"  :
+                 "border-[#2d3840]";
 
   return (
-    <div className={`bg-[#151b23] border rounded-xl p-4 flex flex-col gap-0 ${
-      isRunning   ? "border-yellow-800/40" :
-      needsAttn   ? "border-amber-800/40"  :
-                    "border-[#2d3840]"
-    }`}>
+    <div className={`bg-[#151b23] border rounded-xl p-4 flex flex-col gap-0 relative ${borderCls}${isSelected ? " ring-1 ring-[#94b2b6]/20" : ""}`}>
 
-      {/* Type + status */}
-      <div className="flex items-center gap-1.5 mb-2.5">
+      {/* Selection checkbox */}
+      {managing && (
+        <label className="absolute top-3 left-3 z-10 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => onSelect(e.target.checked)}
+            className="accent-[#94b2b6] w-3.5 h-3.5"
+          />
+        </label>
+      )}
+
+      {/* Type + status + menu row */}
+      <div className={`flex items-center gap-1.5 mb-2.5 ${managing ? "pl-5" : ""}`}>
         <span className="text-[10px] bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider">
           {TYPE_LABEL[campaign.type]}
         </span>
         <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${STATUS_CLS[campaign.status]}`}>
           {STATUS_LABEL[campaign.status]}
         </span>
+        {campaign.isTest && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-900/40 text-purple-400 font-semibold">TEST</span>
+        )}
+        <div className="ml-auto">
+          <CardMenu campaign={campaign} onAction={onManageAction} />
+        </div>
       </div>
 
       <p className="text-sm text-[#e9f0ef] font-medium leading-snug mb-1 line-clamp-2">{campaign.title}</p>
+      {campaign.goal && <p className="text-xs text-[#708289] truncate mb-2">{campaign.goal}</p>}
 
-      {campaign.goal && (
-        <p className="text-xs text-[#708289] truncate mb-2">{campaign.goal}</p>
-      )}
-
-      {/* Campaign ID row */}
+      {/* Campaign ID */}
       <div className="flex items-center gap-1.5 mb-3">
         <code className="text-[10px] text-[#434e56] font-mono truncate flex-1">{campaign.id}</code>
         <CopyIdButton id={campaign.id} />
       </div>
 
       <div className="flex flex-wrap gap-x-2 gap-y-0.5 mb-3">
-        {campaign.platform && <span className="text-[10px] text-[#708289]">{campaign.platform}</span>}
+        {campaign.platform  && <span className="text-[10px] text-[#708289]">{campaign.platform}</span>}
         {campaign.budget != null && <span className="text-[10px] text-[#708289]">${campaign.budget.toFixed(0)} budget</span>}
-        {campaign.client && <span className="text-[10px] text-[#708289]">{campaign.client.fullName}</span>}
+        {campaign.client    && <span className="text-[10px] text-[#708289]">{campaign.client.fullName}</span>}
       </div>
 
-      {/* ── Processing / loading state ─────────────────────────────── */}
-      {isRunning && (
-        <div className="flex items-center gap-2.5 bg-yellow-950/30 border border-yellow-800/30 rounded-lg px-3 py-2.5 mb-3">
-          <div className="w-3.5 h-3.5 rounded-full border-2 border-yellow-400 border-t-transparent animate-spin shrink-0" />
-          <div>
-            <p className="text-xs text-yellow-300 font-medium">Processing in n8n…</p>
-            <p className="text-[10px] text-yellow-700">
-              {campaign.latestRun!.workflowType.replace(/_/g, " ")} · auto-refreshing
-            </p>
+      {/* ── Stuck state ───────────────────────────────────────────── */}
+      {stuck && (
+        <div className="flex items-start gap-2.5 bg-orange-950/30 border border-orange-800/30 rounded-lg px-3 py-2.5 mb-3">
+          <div className="w-3 h-3 rounded-full bg-orange-500 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-orange-300 font-medium">Stuck — processing &gt; 10 min</p>
+            <p className="text-[10px] text-orange-700 mb-2">{campaign.latestRun!.workflowType.replace(/_/g, " ")}</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => onManageAction("reset")}
+                className="text-[10px] font-semibold px-2 py-1 rounded bg-orange-900/40 border border-orange-700/50 text-orange-300 hover:text-orange-200 transition-colors"
+              >Reset to IDEA</button>
+              <button
+                onClick={() => onManageAction("cancel")}
+                className="text-[10px] font-semibold px-2 py-1 rounded bg-[#1e2730] border border-[#434e56] text-[#708289] hover:text-white transition-colors"
+              >Cancel Run</button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── Workflow run status line (non-running) ────────────────── */}
+      {/* ── Processing state (non-stuck) ──────────────────────────── */}
+      {isRunning && !stuck && (
+        <div className="flex items-center gap-2.5 bg-yellow-950/30 border border-yellow-800/30 rounded-lg px-3 py-2.5 mb-3">
+          <div className="w-3.5 h-3.5 rounded-full border-2 border-yellow-400 border-t-transparent animate-spin shrink-0" />
+          <div>
+            <p className="text-xs text-yellow-300 font-medium">Processing in n8n…</p>
+            <p className="text-[10px] text-yellow-700">{campaign.latestRun!.workflowType.replace(/_/g, " ")} · auto-refreshing</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Run status line (non-running) ─────────────────────────── */}
       {campaign.latestRun && !isRunning && (
         <div className="flex items-center gap-1.5 mb-3">
-          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-            runStatus === "COMPLETED" ? "bg-green-500" :
-            runStatus === "FAILED"    ? "bg-red-500"   : "bg-gray-600"
-          }`} />
+          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${runStatus === "COMPLETED" ? "bg-green-500" : runStatus === "FAILED" ? "bg-red-500" : "bg-gray-600"}`} />
           <span className="text-[10px] text-[#708289]">
             {campaign.latestRun.workflowType.replace(/_/g, " ")} · {runStatus?.toLowerCase()}
           </span>
@@ -282,43 +357,31 @@ function CampaignCard({
       {hasFailed && (
         <div className="bg-red-950/30 border border-red-900/40 rounded-lg px-3 py-2.5 mb-3">
           <p className="text-xs text-red-400 font-medium">Workflow failed</p>
-          <p className="text-[10px] text-red-600 mt-0.5 line-clamp-2">
-            {campaign.latestRun!.errorMessage}
-          </p>
+          <p className="text-[10px] text-red-600 mt-0.5 line-clamp-2">{campaign.latestRun!.errorMessage}</p>
         </div>
       )}
 
-      {/* ── Generated strategy preview ────────────────────────────── */}
+      {/* ── Strategy preview ──────────────────────────────────────── */}
       {hasStrategy && (
         <div className="bg-[#0e1520] border border-[#2d3840] rounded-xl p-3 mb-3">
-          <p className="text-[10px] text-[#94b2b6] uppercase tracking-wider font-semibold mb-2">
-            Generated Strategy
-          </p>
+          <p className="text-[10px] text-[#94b2b6] uppercase tracking-wider font-semibold mb-2">Generated Strategy</p>
           {campaign.approvedStrategy && (
-            <p className="text-xs text-[#e9f0ef] leading-relaxed line-clamp-3 mb-2">
-              {campaign.approvedStrategy}
-            </p>
+            <p className="text-xs text-[#e9f0ef] leading-relaxed line-clamp-3 mb-2">{campaign.approvedStrategy}</p>
           )}
           {campaign.approvedCaption && (
-            <p className="text-xs text-[#708289] italic line-clamp-2 mb-1.5">
-              &ldquo;{campaign.approvedCaption}&rdquo;
-            </p>
+            <p className="text-xs text-[#708289] italic line-clamp-2 mb-1.5">&ldquo;{campaign.approvedCaption}&rdquo;</p>
           )}
           {campaign.approvedHashtags && (
-            <p className="text-[10px] text-[#94b2b6]/70 line-clamp-1">
-              {campaign.approvedHashtags}
-            </p>
+            <p className="text-[10px] text-[#94b2b6]/70 line-clamp-1">{campaign.approvedHashtags}</p>
           )}
         </div>
       )}
 
       {msg && (
-        <p className={`text-[10px] mb-2 ${msg.type === "success" ? "text-green-400" : "text-red-400"}`}>
-          {msg.text}
-        </p>
+        <p className={`text-[10px] mb-2 ${msg.type === "success" ? "text-green-400" : "text-red-400"}`}>{msg.text}</p>
       )}
 
-      {/* ── Action button — hidden while n8n is processing ───────── */}
+      {/* Action button (hidden while processing) */}
       {!isRunning && action && (
         <button
           onClick={() => onAction(action)}
@@ -329,7 +392,6 @@ function CampaignCard({
         </button>
       )}
 
-      {/* Details link */}
       <button
         onClick={onDetail}
         className="w-full mt-2 text-[11px] text-[#708289] hover:text-[#94b2b6] py-1.5 rounded-lg transition-colors border border-transparent hover:border-[#2d3840]"
@@ -337,7 +399,6 @@ function CampaignCard({
         View details &amp; runs →
       </button>
 
-      {/* Performance stats — live campaigns */}
       {campaign.latestStats && (campaign.status === "PUBLISHED" || campaign.status === "ACTIVE_AD") && (
         <div className="grid grid-cols-3 gap-1.5 mt-2 pt-3 border-t border-[#2d3840]">
           {[
@@ -359,19 +420,18 @@ function CampaignCard({
 // ── Main hub ──────────────────────────────────────────────────────────────────
 
 export default function AutomationHubClient({
-  initialCampaigns,
-  initialRuns,
-  initialAssets,
-  initialSettings,
+  initialCampaigns, initialRuns, initialAssets, initialSettings,
 }: Props) {
-  const [campaigns,         setCampaigns]         = useState<CampaignRow[]>(initialCampaigns);
-  const [showCreate,        setShowCreate]        = useState(false);
-  const [showSettings,      setShowSettings]      = useState(false);
-  const [detailCampaignId,  setDetailCampaignId]  = useState<string | null>(null);
-  const [actionLoading,     setActionLoading]     = useState<Record<string, boolean>>({});
-  const [actionMsg,         setActionMsg]         = useState<Record<string, { type: "success" | "error"; text: string }>>({});
-  // liveSettings starts from server render, then updates whenever the modal saves
-  const [liveSettings,      setLiveSettings]      = useState<SettingsRow | null>(initialSettings);
+  const [campaigns,        setCampaigns]        = useState<CampaignRow[]>(initialCampaigns);
+  const [showCreate,       setShowCreate]       = useState(false);
+  const [showSettings,     setShowSettings]     = useState(false);
+  const [detailCampaignId, setDetailCampaignId] = useState<string | null>(null);
+  const [actionLoading,    setActionLoading]    = useState<Record<string, boolean>>({});
+  const [actionMsg,        setActionMsg]        = useState<Record<string, { type: "success" | "error"; text: string }>>({});
+  const [liveSettings,     setLiveSettings]     = useState<SettingsRow | null>(initialSettings);
+  const [managing,         setManaging]         = useState(false);
+  const [selectedIds,      setSelectedIds]      = useState<Set<string>>(new Set<string>());
+  const [bulkLoading,      setBulkLoading]      = useState(false);
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/admin/automation/campaigns");
@@ -391,16 +451,14 @@ export default function AutomationHubClient({
     return () => clearTimeout(timer);
   }, [campaigns, refresh]);
 
+  // ── Workflow action (trigger n8n) ──────────────────────────────────────────
+
   async function triggerAction(campaign: CampaignRow, action: CampaignAction) {
     if (action.confirm && !window.confirm(action.confirm)) return;
     setActionLoading((p) => ({ ...p, [campaign.id]: true }));
-    setActionMsg((p)  => { const n = { ...p }; delete n[campaign.id]; return n; });
+    setActionMsg((p) => { const n = { ...p }; delete n[campaign.id]; return n; });
     try {
-      const res  = await fetch(action.route, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(action.body),
-      });
+      const res  = await fetch(action.route, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action.body) });
       const data = await res.json();
       if (res.ok) {
         setActionMsg((p) => ({ ...p, [campaign.id]: { type: "success", text: data.message ?? "Done ✓" } }));
@@ -415,32 +473,164 @@ export default function AutomationHubClient({
     }
   }
 
-  const pendingApproval = campaigns.filter(
-    (c) => c.status === "STRATEGY_PENDING_APPROVAL" || c.status === "CREATIVE_PENDING_APPROVAL"
-  );
-  const totalActive    = campaigns.filter((c) => c.status === "PUBLISHED" || c.status === "ACTIVE_AD").length;
-  const totalCompleted = campaigns.filter((c) => c.status === "COMPLETED").length;
+  // ── Per-card management actions ────────────────────────────────────────────
+
+  async function manageAction(campaign: CampaignRow, action: ManageAction) {
+    const id = campaign.id;
+
+    if (action === "delete") {
+      if (!window.confirm(`Permanently delete "${campaign.title}"? This cannot be undone.`)) return;
+      await fetch(`/api/admin/automation/campaigns/${id}`, { method: "DELETE" });
+      await refresh();
+      return;
+    }
+
+    if (action === "cancel") {
+      if (!window.confirm(`Cancel processing for "${campaign.title}" and reset to IDEA?`)) return;
+      await fetch("/api/admin/automation/campaigns/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", ids: [id] }),
+      });
+      await refresh();
+      return;
+    }
+
+    const body: Record<string, unknown> =
+      action === "archive"  ? { status: "ARCHIVED" }      :
+      action === "reset"    ? { status: "IDEA" }           :
+      action === "markTest" ? { isTest: !campaign.isTest } : {};
+
+    await fetch(`/api/admin/automation/campaigns/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    await refresh();
+  }
+
+  // ── Bulk selection helpers ─────────────────────────────────────────────────
+
+  function toggleSelect(id: string, v: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (v) next.add(id); else next.delete(id);
+      return next;
+    });
+  }
+
+  function selectAll() { setSelectedIds(new Set<string>(campaigns.map((c) => c.id))); }
+  function clearSel()  { setSelectedIds(new Set<string>()); }
+
+  function addStageToSelection(stageCampaigns: CampaignRow[]) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      stageCampaigns.forEach((c) => next.add(c.id));
+      return next;
+    });
+  }
+
+  // ── Bulk operations ────────────────────────────────────────────────────────
+
+  async function runBulkAction(action: string) {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (action === "delete" && !window.confirm(`Permanently delete ${ids.length} campaign(s)? This cannot be undone.`)) return;
+    setBulkLoading(true);
+    try {
+      await fetch("/api/admin/automation/campaigns/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ids }),
+      });
+      clearSel();
+      setManaging(false);
+      await refresh();
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function clearTestCampaigns() {
+    const testCount = campaigns.filter((c) => c.isTest || c.title.toLowerCase().includes("test")).length;
+    if (testCount === 0) { window.alert("No test campaigns found."); return; }
+    if (!window.confirm(`Archive ${testCount} test campaign(s)? (isTest=true or title contains "test")`)) return;
+    setBulkLoading(true);
+    try {
+      await fetch("/api/admin/automation/campaigns/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clearTest" }),
+      });
+      await refresh();
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  // ── Derived state ──────────────────────────────────────────────────────────
+
+  const stuckCampaigns  = campaigns.filter(isStuck);
+  const nonStuck        = campaigns.filter((c) => !isStuck(c));
+  const pendingApproval = campaigns.filter((c) => c.status === "STRATEGY_PENDING_APPROVAL" || c.status === "CREATIVE_PENDING_APPROVAL");
+  const totalActive     = campaigns.filter((c) => c.status === "PUBLISHED" || c.status === "ACTIVE_AD").length;
+  const totalCompleted  = campaigns.filter((c) => c.status === "COMPLETED").length;
+  const testCount       = campaigns.filter((c) => c.isTest || c.title.toLowerCase().includes("test")).length;
 
   const urlsConfigured = liveSettings
     ? [
-        liveSettings.socialWorkflowWebhookUrl,
-        liveSettings.trendWorkflowWebhookUrl,
-        liveSettings.canvaWorkflowWebhookUrl,
-        liveSettings.remotionWorkflowWebhookUrl,
+        liveSettings.socialWorkflowWebhookUrl, liveSettings.trendWorkflowWebhookUrl,
+        liveSettings.canvaWorkflowWebhookUrl,  liveSettings.remotionWorkflowWebhookUrl,
         liveSettings.metaAdsWorkflowWebhookUrl,
       ].filter(Boolean).length
     : 0;
 
-  return (
-    <div className="p-6 max-w-6xl">
+  function renderCard(campaign: CampaignRow) {
+    return (
+      <CampaignCard
+        key={campaign.id}
+        campaign={campaign}
+        loading={actionLoading[campaign.id] ?? false}
+        msg={actionMsg[campaign.id]}
+        onAction={(action) => triggerAction(campaign, action)}
+        onDetail={() => setDetailCampaignId(campaign.id)}
+        onManageAction={(action) => manageAction(campaign, action)}
+        managing={managing}
+        isSelected={selectedIds.has(campaign.id)}
+        onSelect={(v) => toggleSelect(campaign.id, v)}
+      />
+    );
+  }
 
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+  return (
+    <div className="p-6 max-w-6xl pb-28">
+
+      {/* ── Header ────────────────────────────────────────────────────────── */}
+      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-white mb-1">Marketing Automation</h1>
           <p className="text-gray-400 text-sm">Campaign pipeline · n8n workflow control center</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {testCount > 0 && (
+            <button
+              onClick={clearTestCampaigns}
+              disabled={bulkLoading}
+              className="text-xs text-purple-400 hover:text-purple-300 bg-purple-900/20 border border-purple-800/40 hover:border-purple-700/60 rounded-lg px-3 py-2 transition-colors disabled:opacity-50"
+            >
+              Clear Test ({testCount})
+            </button>
+          )}
+          <button
+            onClick={() => { setManaging(!managing); clearSel(); }}
+            className={`text-xs rounded-lg px-3 py-2 border transition-colors ${
+              managing
+                ? "bg-[#94b2b6] text-[#151b23] border-transparent font-bold"
+                : "text-gray-400 hover:text-white bg-gray-900 border-gray-800 hover:border-gray-700"
+            }`}
+          >
+            {managing ? "Done Selecting" : "Manage"}
+          </button>
           <button
             onClick={() => setShowSettings(true)}
             className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white bg-gray-900 border border-gray-800 hover:border-gray-700 rounded-lg px-3 py-2 transition-colors"
@@ -474,7 +664,7 @@ export default function AutomationHubClient({
 
       {/* Action Required banner */}
       {pendingApproval.length > 0 && (
-        <div className="flex items-center gap-4 bg-amber-950/30 border border-amber-800/40 rounded-xl px-5 py-4 mb-6">
+        <div className="flex items-center gap-4 bg-amber-950/30 border border-amber-800/40 rounded-xl px-5 py-4 mb-4">
           <div className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center shrink-0">
             <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -484,9 +674,24 @@ export default function AutomationHubClient({
             <p className="text-amber-400 font-semibold text-sm">
               {pendingApproval.length} campaign{pendingApproval.length !== 1 ? "s" : ""} awaiting your approval
             </p>
-            <p className="text-amber-600 text-xs mt-0.5 truncate max-w-lg">
-              {pendingApproval.map((c) => c.title).join(" · ")}
+            <p className="text-amber-600 text-xs mt-0.5 truncate max-w-lg">{pendingApproval.map((c) => c.title).join(" · ")}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Stuck banner */}
+      {stuckCampaigns.length > 0 && (
+        <div className="flex items-center gap-4 bg-orange-950/30 border border-orange-800/40 rounded-xl px-5 py-4 mb-4">
+          <div className="w-8 h-8 bg-orange-500/20 rounded-lg flex items-center justify-center shrink-0">
+            <svg className="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-orange-400 font-semibold text-sm">
+              {stuckCampaigns.length} campaign{stuckCampaigns.length !== 1 ? "s" : ""} stuck in processing (&gt;10 min)
             </p>
+            <p className="text-orange-700 text-xs mt-0.5">{stuckCampaigns.map((c) => c.title).join(" · ")}</p>
           </div>
         </div>
       )}
@@ -494,22 +699,20 @@ export default function AutomationHubClient({
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
         {([
-          { label: "Total Campaigns", value: campaigns.length,        sub: "all time",           accent: undefined           },
-          { label: "Needs Approval",  value: pendingApproval.length,  sub: undefined,            accent: pendingApproval.length > 0 ? "amber" : undefined },
-          { label: "Live",            value: totalActive,             sub: undefined,            accent: totalActive > 0 ? "green" : undefined },
-          { label: "Completed",       value: totalCompleted,          sub: "published + synced", accent: undefined           },
+          { label: "Total Campaigns", value: campaigns.length,       sub: "all time",           accent: undefined },
+          { label: "Needs Approval",  value: pendingApproval.length, sub: undefined,            accent: pendingApproval.length > 0 ? "amber" : undefined },
+          { label: "Live",            value: totalActive,            sub: undefined,            accent: totalActive > 0 ? "green" : undefined },
+          { label: "Completed",       value: totalCompleted,         sub: "published + synced", accent: undefined },
         ] as { label: string; value: number; sub: string | undefined; accent: string | undefined }[]).map(({ label, value, sub, accent }) => (
           <div key={label} className="bg-gray-900 border border-gray-800 rounded-xl p-5">
             <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold mb-2">{label}</p>
-            <p className={`text-3xl font-bold ${accent === "amber" ? "text-amber-400" : accent === "green" ? "text-green-400" : "text-white"}`}>
-              {value}
-            </p>
+            <p className={`text-3xl font-bold ${accent === "amber" ? "text-amber-400" : accent === "green" ? "text-green-400" : "text-white"}`}>{value}</p>
             {sub && <p className="text-xs text-gray-600 mt-1">{sub}</p>}
           </div>
         ))}
       </div>
 
-      {/* Campaign Pipeline */}
+      {/* ── Campaign Pipeline ──────────────────────────────────────────────── */}
       <div className="mb-10">
         <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold mb-5">Campaign Pipeline</p>
 
@@ -519,42 +722,52 @@ export default function AutomationHubClient({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
             <p className="text-sm font-medium text-gray-500">No campaigns yet</p>
-            <p className="text-xs text-gray-600 max-w-sm leading-relaxed">
-              Create your first campaign to start the automation pipeline.
-            </p>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="mt-2 text-xs text-[#151b23] bg-[#94b2b6] hover:bg-[#7a9ea3] rounded-lg px-4 py-2 font-bold transition-colors"
-            >
+            <button onClick={() => setShowCreate(true)} className="mt-2 text-xs text-[#151b23] bg-[#94b2b6] hover:bg-[#7a9ea3] rounded-lg px-4 py-2 font-bold transition-colors">
               + New Campaign
             </button>
           </div>
         ) : (
           <div className="space-y-8">
+
+            {/* Stuck section */}
+            {stuckCampaigns.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <p className="text-xs font-semibold text-orange-400">Stuck / Timed Out</p>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-orange-900/30 text-orange-500">{stuckCampaigns.length}</span>
+                  {managing && (
+                    <button onClick={() => addStageToSelection(stuckCampaigns)} className="text-[10px] text-[#708289] hover:text-white transition-colors ml-1">
+                      Select all stuck
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {stuckCampaigns.map(renderCard)}
+                </div>
+              </div>
+            )}
+
+            {/* Pipeline stages (non-stuck) */}
             {PIPELINE_STAGES.map((stage) => {
-              const stageCampaigns = campaigns.filter((c) => (stage.statuses as string[]).includes(c.status));
+              const stageCampaigns = nonStuck.filter((c) => (stage.statuses as string[]).includes(c.status));
               if (stageCampaigns.length === 0) return null;
               return (
                 <div key={stage.label}>
                   <div className="flex items-center gap-2 mb-3">
-                    <p className={`text-xs font-semibold ${stage.amber ? "text-amber-400" : "text-gray-400"}`}>
+                    <p className={`text-xs font-semibold ${stage.amber ? "text-amber-400" : stage.muted ? "text-gray-600" : "text-gray-400"}`}>
                       {stage.label}
                     </p>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${stage.amber ? "bg-amber-900/30 text-amber-500" : "bg-gray-800 text-gray-600"}`}>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${stage.amber ? "bg-amber-900/30 text-amber-500" : stage.muted ? "bg-gray-900 text-gray-700" : "bg-gray-800 text-gray-600"}`}>
                       {stageCampaigns.length}
                     </span>
+                    {managing && (
+                      <button onClick={() => addStageToSelection(stageCampaigns)} className="text-[10px] text-[#708289] hover:text-white transition-colors ml-1">
+                        Select all
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                    {stageCampaigns.map((campaign) => (
-                      <CampaignCard
-                        key={campaign.id}
-                        campaign={campaign}
-                        loading={actionLoading[campaign.id] ?? false}
-                        msg={actionMsg[campaign.id]}
-                        onAction={(action) => triggerAction(campaign, action)}
-                        onDetail={() => setDetailCampaignId(campaign.id)}
-                      />
-                    ))}
+                    {stageCampaigns.map(renderCard)}
                   </div>
                 </div>
               );
@@ -563,7 +776,7 @@ export default function AutomationHubClient({
         )}
       </div>
 
-      {/* Recent Workflow Runs */}
+      {/* ── Recent Workflow Runs ───────────────────────────────────────────── */}
       <div className="mb-10">
         <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold mb-4">Recent Workflow Runs</p>
         {initialRuns.length === 0 ? (
@@ -571,27 +784,14 @@ export default function AutomationHubClient({
         ) : (
           <div className="rounded-xl border border-gray-800 overflow-hidden">
             {initialRuns.slice(0, 15).map((run, idx) => (
-              <div
-                key={run.id}
-                className={`flex items-center gap-3 px-4 py-3 ${idx % 2 === 0 ? "bg-gray-900" : "bg-gray-900/50"} border-b border-gray-800/50 last:border-0`}
-              >
-                <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${RUN_STATUS_CLS[run.status] ?? "bg-gray-800 text-gray-400"}`}>
-                  {run.status}
-                </span>
+              <div key={run.id} className={`flex items-center gap-3 px-4 py-3 ${idx % 2 === 0 ? "bg-gray-900" : "bg-gray-900/50"} border-b border-gray-800/50 last:border-0`}>
+                <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${RUN_STATUS_CLS[run.status] ?? "bg-gray-800 text-gray-400"}`}>{run.status}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-white font-medium truncate">{run.workflowType.replace(/_/g, " ")}</p>
-                  {run.campaign && (
-                    <p className="text-[10px] text-gray-600 truncate">{run.campaign.title}</p>
-                  )}
+                  {run.campaign && <p className="text-[10px] text-gray-600 truncate">{run.campaign.title}</p>}
                 </div>
-                {run.n8nExecutionId && (
-                  <span className="text-[10px] text-gray-600 font-mono shrink-0">#{run.n8nExecutionId.slice(-6)}</span>
-                )}
-                {run.errorMessage && (
-                  <span className="text-[10px] text-red-400 truncate max-w-[120px]" title={run.errorMessage}>
-                    {run.errorMessage}
-                  </span>
-                )}
+                {run.n8nExecutionId && <span className="text-[10px] text-gray-600 font-mono shrink-0">#{run.n8nExecutionId.slice(-6)}</span>}
+                {run.errorMessage && <span className="text-[10px] text-red-400 truncate max-w-[120px]" title={run.errorMessage}>{run.errorMessage}</span>}
                 <span className="text-[10px] text-gray-700 shrink-0">
                   {new Date(run.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                 </span>
@@ -601,7 +801,7 @@ export default function AutomationHubClient({
         )}
       </div>
 
-      {/* Creative Assets */}
+      {/* ── Creative Assets ────────────────────────────────────────────────── */}
       {initialAssets.length > 0 && (
         <div className="mb-10">
           <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold mb-4">Recent Creative Assets</p>
@@ -618,38 +818,30 @@ export default function AutomationHubClient({
                 )}
                 <p className="text-xs text-white font-medium truncate">{asset.title}</p>
                 <div className="flex items-center justify-between mt-1">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                    asset.status === "APPROVED"  ? "bg-green-900/40 text-green-400" :
-                    asset.status === "REJECTED"  ? "bg-red-900/30 text-red-400"    :
-                                                   "bg-gray-800 text-gray-500"
-                  }`}>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${asset.status === "APPROVED" ? "bg-green-900/40 text-green-400" : asset.status === "REJECTED" ? "bg-red-900/30 text-red-400" : "bg-gray-800 text-gray-500"}`}>
                     {asset.status}
                   </span>
                   <span className="text-[10px] text-gray-600">{asset.provider}</span>
                 </div>
-                {asset.campaign && (
-                  <p className="text-[10px] text-gray-700 truncate mt-1">{asset.campaign.title}</p>
-                )}
+                {asset.campaign && <p className="text-[10px] text-gray-700 truncate mt-1">{asset.campaign.title}</p>}
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* n8n Connection status */}
+      {/* ── n8n Connection ─────────────────────────────────────────────────── */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-8">
         <div className="flex items-center justify-between mb-4">
           <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold">n8n Connection</p>
-          <button onClick={() => setShowSettings(true)} className="text-xs text-gray-500 hover:text-white transition-colors">
-            Configure →
-          </button>
+          <button onClick={() => setShowSettings(true)} className="text-xs text-gray-500 hover:text-white transition-colors">Configure →</button>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "Automation",      value: liveSettings?.isEnabled         ? "Enabled"    : "Disabled", ok: liveSettings?.isEnabled         },
-            { label: "Base URL",        value: liveSettings?.n8nBaseUrl         ? "Configured" : "Not set",  ok: !!liveSettings?.n8nBaseUrl        },
-            { label: "Webhook Secret",  value: liveSettings?.webhookSecretIsSet ? "Set"        : "Not set",  ok: liveSettings?.webhookSecretIsSet  },
-            { label: "Webhook URLs",    value: `${urlsConfigured} / 5 configured`,                           ok: urlsConfigured > 0                },
+            { label: "Automation",     value: liveSettings?.isEnabled         ? "Enabled"    : "Disabled", ok: liveSettings?.isEnabled         },
+            { label: "Base URL",       value: liveSettings?.n8nBaseUrl         ? "Configured" : "Not set",  ok: !!liveSettings?.n8nBaseUrl        },
+            { label: "Webhook Secret", value: liveSettings?.webhookSecretIsSet ? "Set"        : "Not set",  ok: liveSettings?.webhookSecretIsSet  },
+            { label: "Webhook URLs",   value: `${urlsConfigured} / 5 configured`,                           ok: urlsConfigured > 0                },
           ].map(({ label, value, ok }) => (
             <div key={label} className="flex items-center gap-2">
               <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${ok ? "bg-green-500" : "bg-gray-700"}`} />
@@ -662,7 +854,7 @@ export default function AutomationHubClient({
         </div>
       </div>
 
-      {/* Modals */}
+      {/* ── Modals ─────────────────────────────────────────────────────────── */}
       {showCreate && (
         <CreateCampaignModal
           onClose={() => setShowCreate(false)}
@@ -673,7 +865,6 @@ export default function AutomationHubClient({
         <AutomationSettingsModal
           onClose={() => setShowSettings(false)}
           onSaved={(updated: LiveAutomationSettings) => {
-            // Update the connection panel immediately without a page reload
             setLiveSettings({
               id:                         updated.id,
               isEnabled:                  updated.isEnabled,
@@ -694,6 +885,33 @@ export default function AutomationHubClient({
           campaignId={detailCampaignId}
           onClose={() => setDetailCampaignId(null)}
         />
+      )}
+
+      {/* ── Bulk action bar (fixed bottom) ────────────────────────────────── */}
+      {managing && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#151b23] border-t border-[#434e56] px-6 py-4 flex items-center gap-3 shadow-2xl">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <p className="text-sm text-white font-semibold shrink-0">
+              {selectedIds.size > 0 ? `${selectedIds.size} selected` : "Select campaigns above"}
+            </p>
+            {selectedIds.size === 0 ? (
+              <button onClick={selectAll} className="text-xs text-[#708289] hover:text-white transition-colors">
+                Select all ({campaigns.length})
+              </button>
+            ) : (
+              <button onClick={clearSel} className="text-xs text-[#708289] hover:text-white transition-colors">Clear</button>
+            )}
+          </div>
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <button onClick={() => runBulkAction("archive")}  disabled={bulkLoading} className="text-xs px-3 py-1.5 rounded-lg bg-gray-800 text-gray-300 hover:text-white border border-gray-700 transition-colors disabled:opacity-50">Archive</button>
+              <button onClick={() => runBulkAction("reset")}    disabled={bulkLoading} className="text-xs px-3 py-1.5 rounded-lg bg-gray-800 text-gray-300 hover:text-white border border-gray-700 transition-colors disabled:opacity-50">Reset to IDEA</button>
+              <button onClick={() => runBulkAction("cancel")}   disabled={bulkLoading} className="text-xs px-3 py-1.5 rounded-lg bg-gray-800 text-gray-300 hover:text-white border border-gray-700 transition-colors disabled:opacity-50">Cancel Processing</button>
+              <button onClick={() => runBulkAction("delete")}   disabled={bulkLoading} className="text-xs px-3 py-1.5 rounded-lg bg-red-900/40 text-red-400 hover:text-red-300 border border-red-900/60 transition-colors disabled:opacity-50">Delete</button>
+            </div>
+          )}
+          <button onClick={() => { setManaging(false); clearSel(); }} className="text-xs text-[#708289] hover:text-white transition-colors shrink-0 ml-2">Done</button>
+        </div>
       )}
     </div>
   );

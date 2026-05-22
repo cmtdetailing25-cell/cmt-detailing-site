@@ -48,6 +48,7 @@ export async function PATCH(
     if (approvedCaption       !== undefined) data.approvedCaption       = approvedCaption       ? String(approvedCaption).trim()       : null;
     if (approvedHashtags      !== undefined) data.approvedHashtags      = approvedHashtags      ? String(approvedHashtags).trim()      : null;
     if (approvedCreativeNotes !== undefined) data.approvedCreativeNotes = approvedCreativeNotes ? String(approvedCreativeNotes).trim() : null;
+    if (body.isTest           !== undefined) data.isTest                = body.isTest === true;
     if (budget                !== undefined) data.budget                = typeof budget === "number" ? budget : null;
     if (startDate             !== undefined) data.startDate             = startDate ? new Date(startDate) : null;
     if (endDate               !== undefined) data.endDate               = endDate   ? new Date(endDate)   : null;
