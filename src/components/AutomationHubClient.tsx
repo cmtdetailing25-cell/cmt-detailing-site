@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import CreateCampaignModal from "./CreateCampaignModal";
-import AutomationSettingsModal from "./AutomationSettingsModal";
+import AutomationSettingsModal, { type LiveAutomationSettings } from "./AutomationSettingsModal";
 import CampaignDetailModal from "./CampaignDetailModal";
 
 type CS =
@@ -299,6 +299,8 @@ export default function AutomationHubClient({
   const [detailCampaignId,  setDetailCampaignId]  = useState<string | null>(null);
   const [actionLoading,     setActionLoading]     = useState<Record<string, boolean>>({});
   const [actionMsg,         setActionMsg]         = useState<Record<string, { type: "success" | "error"; text: string }>>({});
+  // liveSettings starts from server render, then updates whenever the modal saves
+  const [liveSettings,      setLiveSettings]      = useState<SettingsRow | null>(initialSettings);
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/admin/automation/campaigns");
@@ -338,13 +340,13 @@ export default function AutomationHubClient({
   const totalActive    = campaigns.filter((c) => c.status === "PUBLISHED" || c.status === "ACTIVE_AD").length;
   const totalCompleted = campaigns.filter((c) => c.status === "COMPLETED").length;
 
-  const urlsConfigured = initialSettings
+  const urlsConfigured = liveSettings
     ? [
-        initialSettings.socialWorkflowWebhookUrl,
-        initialSettings.trendWorkflowWebhookUrl,
-        initialSettings.canvaWorkflowWebhookUrl,
-        initialSettings.remotionWorkflowWebhookUrl,
-        initialSettings.metaAdsWorkflowWebhookUrl,
+        liveSettings.socialWorkflowWebhookUrl,
+        liveSettings.trendWorkflowWebhookUrl,
+        liveSettings.canvaWorkflowWebhookUrl,
+        liveSettings.remotionWorkflowWebhookUrl,
+        liveSettings.metaAdsWorkflowWebhookUrl,
       ].filter(Boolean).length
     : 0;
 
@@ -563,10 +565,10 @@ export default function AutomationHubClient({
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "Automation",      value: initialSettings?.isEnabled         ? "Enabled"         : "Disabled",     ok: initialSettings?.isEnabled         },
-            { label: "Base URL",        value: initialSettings?.n8nBaseUrl         ? "Configured"      : "Not set",      ok: !!initialSettings?.n8nBaseUrl        },
-            { label: "Webhook Secret",  value: initialSettings?.webhookSecretIsSet ? "Set"             : "Not set",      ok: initialSettings?.webhookSecretIsSet  },
-            { label: "Webhook URLs",    value: `${urlsConfigured} / 5 configured`,                                       ok: urlsConfigured > 0                   },
+            { label: "Automation",      value: liveSettings?.isEnabled         ? "Enabled"    : "Disabled", ok: liveSettings?.isEnabled         },
+            { label: "Base URL",        value: liveSettings?.n8nBaseUrl         ? "Configured" : "Not set",  ok: !!liveSettings?.n8nBaseUrl        },
+            { label: "Webhook Secret",  value: liveSettings?.webhookSecretIsSet ? "Set"        : "Not set",  ok: liveSettings?.webhookSecretIsSet  },
+            { label: "Webhook URLs",    value: `${urlsConfigured} / 5 configured`,                           ok: urlsConfigured > 0                },
           ].map(({ label, value, ok }) => (
             <div key={label} className="flex items-center gap-2">
               <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${ok ? "bg-green-500" : "bg-gray-700"}`} />
@@ -588,13 +590,22 @@ export default function AutomationHubClient({
       )}
       {showSettings && (
         <AutomationSettingsModal
-          initialSettings={
-            initialSettings
-              ? { ...initialSettings, webhookSecret: null }
-              : null
-          }
           onClose={() => setShowSettings(false)}
-          onSaved={() => setShowSettings(false)}
+          onSaved={(updated: LiveAutomationSettings) => {
+            // Update the connection panel immediately without a page reload
+            setLiveSettings({
+              id:                         updated.id,
+              isEnabled:                  updated.isEnabled,
+              n8nBaseUrl:                 updated.n8nBaseUrl,
+              socialWorkflowWebhookUrl:   updated.socialWorkflowWebhookUrl,
+              trendWorkflowWebhookUrl:    updated.trendWorkflowWebhookUrl,
+              canvaWorkflowWebhookUrl:    updated.canvaWorkflowWebhookUrl,
+              remotionWorkflowWebhookUrl: updated.remotionWorkflowWebhookUrl,
+              metaAdsWorkflowWebhookUrl:  updated.metaAdsWorkflowWebhookUrl,
+              webhookSecretIsSet:         updated.webhookSecretIsSet,
+            });
+            setShowSettings(false);
+          }}
         />
       )}
       {detailCampaignId && (
