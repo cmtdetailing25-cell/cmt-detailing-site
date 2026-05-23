@@ -46,9 +46,13 @@ export async function validateCallbackSecret(req: Request): Promise<boolean> {
 }
 
 // ── Build callback base URL ───────────────────────────────────────────────────
+// Priority: NEXT_PUBLIC_APP_URL → APP_URL → production hard-coded domain → localhost
+// VERCEL_URL is intentionally ignored: it resolves to the preview deployment URL, not
+// the production domain, which would break n8n callbacks on non-prod deployments.
 
 export function getCallbackBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL ?? process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : "http://localhost:3000";
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  if (process.env.APP_URL) return process.env.APP_URL;
+  if (process.env.NODE_ENV === "production") return "https://cmtdetailing.com";
+  return "http://localhost:3000";
 }
