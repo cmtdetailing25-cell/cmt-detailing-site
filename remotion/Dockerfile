@@ -31,25 +31,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy package manifests first for layer caching
+# Diagnostic: print which package.json the build context is giving us.
+# Railway build logs will show this — if it does NOT contain @remotion/cli
+# then Railway is using the repo root as build context instead of remotion/.
 COPY package.json ./
+RUN echo "=== package.json received by Docker ===" && cat package.json && echo "==="
 
-# Full install (not --omit=dev, not npm ci) for two reasons:
-#   1. npx resolves binaries from node_modules/.bin — a partial install can leave
-#      the remotion binary absent even when @remotion/cli is in dependencies.
-#   2. npm ci uses the lock file's platform-specific compositor packages, which were
-#      built for win32-x64 on the dev machine and won't work on linux-x64 here.
+# Full npm install — resolves linux-x64 platform compositor packages
+# regardless of what the lock file captured on the developer's Windows machine.
 RUN npm install
 
-# Confirm the @remotion/cli binary is wired up (visible in Railway build logs)
-RUN ls node_modules/.bin | grep remotion
-
-# Download Chromium Headless Shell used by Remotion renderer.
-# Use the direct binary path — npx finds the base `remotion` package first (it has
-# no bin field) and exits with "could not determine executable to run".
-RUN ./node_modules/.bin/remotion browser ensure
-
-# Copy the rest of the source
+# Copy the rest of the source files
 COPY . .
 
 # Temp dir for in-flight render files
@@ -57,4 +49,8 @@ RUN mkdir -p temp/out
 
 EXPOSE ${PORT:-3001}
 
-CMD ["npm", "run", "start"]
+# browser ensure runs at container startup rather than at build time.
+# This avoids build failures if the binary path changes, and ensures
+# Chromium is downloaded into the running container's filesystem.
+# tsx is used directly from node_modules/.bin to avoid npx resolution ambiguity.
+CMD ["sh", "-c", "./node_modules/.bin/remotion browser ensure && ./node_modules/.bin/tsx server.ts"]
