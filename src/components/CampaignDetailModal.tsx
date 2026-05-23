@@ -13,6 +13,16 @@ interface WorkflowRun {
   createdAt: string;
 }
 
+interface AssetDetail {
+  id: string;
+  type: string;
+  url: string | null;
+  thumbnailUrl: string | null;
+  title: string;
+  notes: string | null;
+  status: string;
+}
+
 interface CampaignDetail {
   id: string;
   type: string;
@@ -30,6 +40,7 @@ interface CampaignDetail {
   endDate: string | null;
   createdAt: string;
   updatedAt: string;
+  assets: AssetDetail[];
   workflowRuns: WorkflowRun[];
 }
 
@@ -212,6 +223,63 @@ export default function CampaignDetailModal({ campaignId, onClose }: Props) {
                   <Field label="Creative Notes"    value={campaign.approvedCreativeNotes} />
                 </div>
               )}
+
+              {/* Video Assets */}
+              {(() => {
+                const videoAssets = campaign.assets.filter((a) => a.type === "REMOTION_VIDEO");
+                if (videoAssets.length === 0) return null;
+                return (
+                  <div className="border-t border-[#2d3840] pt-4 space-y-4">
+                    <p className="text-[10px] text-[#708289] uppercase tracking-wider font-semibold">
+                      Video Assets ({videoAssets.length})
+                    </p>
+                    {videoAssets.map((asset) => (
+                      <div key={asset.id} className="bg-[#0e1520] border border-[#2d3840] rounded-xl overflow-hidden">
+                        {asset.url ? (
+                          <>
+                            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                            <video
+                              controls
+                              className="w-full max-h-64 bg-black"
+                              poster={asset.thumbnailUrl ?? undefined}
+                              src={asset.url}
+                            />
+                            <div className="p-3 space-y-2">
+                              <p className="text-xs text-[#e9f0ef] font-medium">{asset.title}</p>
+                              {asset.notes && <p className="text-[10px] text-[#708289]">{asset.notes}</p>}
+                              <div className="flex gap-2 flex-wrap">
+                                <a
+                                  href={asset.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] font-semibold px-2 py-1 rounded bg-[#1e2730] border border-[#434e56] text-[#94b2b6] hover:text-white hover:border-[#94b2b6] transition-colors"
+                                >
+                                  Open Video ↗
+                                </a>
+                                <a
+                                  href={asset.url}
+                                  download
+                                  className="text-[10px] font-semibold px-2 py-1 rounded bg-[#1e2730] border border-[#434e56] text-[#94b2b6] hover:text-white hover:border-[#94b2b6] transition-colors"
+                                >
+                                  Download
+                                </a>
+                                <CopyButton text={asset.url} label="Copy URL" />
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="px-4 py-3 flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                            <p className="text-xs text-red-400">
+                              Video asset missing — URL not returned by Remotion callback
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {/* Workflow Runs */}
               <div className="border-t border-[#2d3840] pt-4">

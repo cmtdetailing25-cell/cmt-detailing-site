@@ -283,6 +283,9 @@ function CampaignCard({
   const hasFailed = latestWorkflowState === "FAILED" && !!campaign.latestRun?.errorMessage;
   const isVideoRenderFailed = campaign.status === "VIDEO_RENDER_PENDING" && latestWorkflowState === "FAILED";
   const needsAttn = campaign.status === "STRATEGY_PENDING_APPROVAL" || campaign.status === "CREATIVE_PENDING_APPROVAL" || campaign.status === "VIDEO_READY_REVIEW";
+  const videoAsset = campaign.status === "VIDEO_READY_REVIEW"
+    ? (campaign.assets.find((a) => a.type === "REMOTION_VIDEO") ?? null)
+    : null;
   const hasStrategy =
     campaign.status === "STRATEGY_PENDING_APPROVAL" &&
     !!(campaign.approvedCaption || campaign.approvedStrategy || campaign.approvedHashtags);
@@ -393,6 +396,34 @@ function CampaignCard({
         <div className="bg-red-950/30 border border-red-900/40 rounded-lg px-3 py-2.5 mb-3">
           <p className="text-xs text-red-400 font-medium">Workflow failed</p>
           <p className="text-[10px] text-red-600 mt-0.5 line-clamp-2">{campaign.latestRun!.errorMessage}</p>
+        </div>
+      )}
+
+      {/* ── Video preview (VIDEO_READY_REVIEW) ───────────────────── */}
+      {campaign.status === "VIDEO_READY_REVIEW" && (
+        <div className="rounded-lg overflow-hidden mb-3 border border-[#2d3840] bg-[#0e1520]">
+          {videoAsset?.thumbnailUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={videoAsset.thumbnailUrl}
+              alt="Video thumbnail"
+              className="w-full aspect-video object-cover"
+            />
+          ) : videoAsset?.url ? (
+            <div className="aspect-video flex items-center justify-center">
+              <div className="flex flex-col items-center gap-1.5">
+                <svg className="w-7 h-7 text-violet-400" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+                <p className="text-[10px] text-[#708289]">Video ready</p>
+              </div>
+            </div>
+          ) : (
+            <div className="px-3 py-2.5 flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+              <p className="text-[10px] text-red-400">Video asset missing — URL not returned</p>
+            </div>
+          )}
         </div>
       )}
 
