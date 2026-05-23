@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
     campaignId,
     workflowType:       "REMOTION_VIDEO_CREATION",
     webhookUrlKey:      "remotionWorkflowWebhookUrl",
-    newCampaignStatus:  "CREATIVE_PENDING",
+    newCampaignStatus:  "VIDEO_RENDER_PENDING",
     buildPayload: (campaign, callbackBase) => ({
       campaignId:     campaign.id,
       videoType:      campaign.type === "REEL" ? "REEL" : "VIDEO_AD",

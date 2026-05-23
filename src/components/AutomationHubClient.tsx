@@ -7,7 +7,8 @@ import CampaignDetailModal from "./CampaignDetailModal";
 
 type CS =
   | "IDEA" | "TREND_REVIEW" | "STRATEGY_PENDING_APPROVAL" | "CREATIVE_PENDING"
-  | "CREATIVE_PENDING_APPROVAL" | "APPROVED_TO_PUBLISH" | "PUBLISHED"
+  | "CREATIVE_PENDING_APPROVAL" | "VIDEO_RENDER_PENDING" | "VIDEO_READY_REVIEW"
+  | "APPROVED_TO_PUBLISH" | "PUBLISHED"
   | "ACTIVE_AD" | "COMPLETED" | "ARCHIVED" | "FAILED";
 type CT = "ORGANIC_POST" | "REEL" | "VIDEO_AD" | "META_AD" | "STORY" | "CAROUSEL";
 
@@ -67,6 +68,8 @@ const STATUS_LABEL: Record<CS, string> = {
   STRATEGY_PENDING_APPROVAL:  "Strategy Ready — Review",
   CREATIVE_PENDING:           "Creative Pending",
   CREATIVE_PENDING_APPROVAL:  "Needs Creative Approval",
+  VIDEO_RENDER_PENDING:       "Rendering Video…",
+  VIDEO_READY_REVIEW:         "Video Ready — Review",
   APPROVED_TO_PUBLISH:        "Approved to Publish",
   PUBLISHED:                  "Published",
   ACTIVE_AD:                  "Live Ad",
@@ -81,6 +84,8 @@ const STATUS_CLS: Record<CS, string> = {
   STRATEGY_PENDING_APPROVAL:  "bg-amber-900/40 text-amber-400",
   CREATIVE_PENDING:           "bg-purple-900/30 text-purple-400",
   CREATIVE_PENDING_APPROVAL:  "bg-amber-900/40 text-amber-400",
+  VIDEO_RENDER_PENDING:       "bg-indigo-900/40 text-indigo-400",
+  VIDEO_READY_REVIEW:         "bg-violet-900/40 text-violet-300",
   APPROVED_TO_PUBLISH:        "bg-green-900/40 text-green-400",
   PUBLISHED:                  "bg-green-900/60 text-green-300",
   ACTIVE_AD:                  "bg-emerald-900/40 text-emerald-300",
@@ -106,15 +111,17 @@ const TYPE_LABEL: Record<CT, string> = {
 };
 
 const PIPELINE_STAGES: { label: string; statuses: CS[]; amber?: boolean; muted?: boolean }[] = [
-  { label: "Ideas",           statuses: ["IDEA"]                                                        },
-  { label: "Research",        statuses: ["TREND_REVIEW"]                                                },
-  { label: "Strategy Review", statuses: ["STRATEGY_PENDING_APPROVAL"],            amber: true           },
-  { label: "Creative",        statuses: ["CREATIVE_PENDING", "CREATIVE_PENDING_APPROVAL"], amber: true  },
-  { label: "Approved",        statuses: ["APPROVED_TO_PUBLISH"]                                         },
-  { label: "Published",       statuses: ["PUBLISHED", "ACTIVE_AD"]                                      },
-  { label: "Completed",       statuses: ["COMPLETED"]                                                   },
-  { label: "Archived",        statuses: ["ARCHIVED"],                              muted: true           },
-  { label: "Failed",          statuses: ["FAILED"],                                muted: true           },
+  { label: "Ideas",           statuses: ["IDEA"]                                                             },
+  { label: "Research",        statuses: ["TREND_REVIEW"]                                                     },
+  { label: "Strategy Review", statuses: ["STRATEGY_PENDING_APPROVAL"],                 amber: true           },
+  { label: "Creative",        statuses: ["CREATIVE_PENDING", "CREATIVE_PENDING_APPROVAL"], amber: true       },
+  { label: "Video Render",    statuses: ["VIDEO_RENDER_PENDING"]                                             },
+  { label: "Video Review",    statuses: ["VIDEO_READY_REVIEW"],                         amber: true           },
+  { label: "Approved",        statuses: ["APPROVED_TO_PUBLISH"]                                              },
+  { label: "Published",       statuses: ["PUBLISHED", "ACTIVE_AD"]                                          },
+  { label: "Completed",       statuses: ["COMPLETED"]                                                        },
+  { label: "Archived",        statuses: ["ARCHIVED"],                                  muted: true           },
+  { label: "Failed",          statuses: ["FAILED"],                                    muted: true           },
 ];
 
 // ── Next-action logic ─────────────────────────────────────────────────────────
@@ -139,6 +146,11 @@ function getNextAction(c: CampaignRow): CampaignAction | null {
         : { label: "Generate Canva Assets", route: "/api/admin/automation/create-canva-assets",   body: { campaignId: id } };
     case "CREATIVE_PENDING_APPROVAL":
       return { label: "Approve Creative", route: `/api/admin/automation/campaigns/${id}/approve`, body: { stage: "creative" }, variant: "amber" };
+    case "VIDEO_RENDER_PENDING":
+      // Auto-trigger fires on creative approval; this button is a manual fallback
+      return { label: "Render Video", route: "/api/admin/automation/create-remotion-video", body: { campaignId: id } };
+    case "VIDEO_READY_REVIEW":
+      return { label: "Approve Video", route: `/api/admin/automation/campaigns/${id}/approve`, body: { stage: "video" }, variant: "amber" };
     case "APPROVED_TO_PUBLISH":
       return c.type === "META_AD"
         ? { label: "Create Meta Ad (Paused)", route: "/api/admin/automation/create-meta-ad", body: { campaignId: id }, confirm: "This sends a PAUSED ad campaign to Meta via n8n. You must activate it manually in Meta Ads Manager.", variant: "green" }
@@ -266,7 +278,7 @@ function CampaignCard({
   const action = getNextAction(campaign);
   const { isProcessing, isStuck: stuck, latestWorkflowState } = deriveWorkflowState(campaign);
   const hasFailed = latestWorkflowState === "FAILED" && !!campaign.latestRun?.errorMessage;
-  const needsAttn = campaign.status === "STRATEGY_PENDING_APPROVAL" || campaign.status === "CREATIVE_PENDING_APPROVAL";
+  const needsAttn = campaign.status === "STRATEGY_PENDING_APPROVAL" || campaign.status === "CREATIVE_PENDING_APPROVAL" || campaign.status === "VIDEO_READY_REVIEW";
   const hasStrategy =
     campaign.status === "STRATEGY_PENDING_APPROVAL" &&
     !!(campaign.approvedCaption || campaign.approvedStrategy || campaign.approvedHashtags);
