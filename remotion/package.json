@@ -1,0 +1,21 @@
+{
+  "name": "cmt-remotion",
+  "version": "1.0.0",
+  "description": "CMT Detailing — Remotion video rendering templates",
+  "scripts": {
+    "dev": "npx remotion studio src/index.ts",
+    "render": "npx remotion render src/index.ts CMTBeforeAfterReel out/cmt-test-reel.mp4 --props src/sample-props.json --overwrite --codec h264",
+    "render:hq": "npx remotion render src/index.ts CMTBeforeAfterReel out/cmt-test-reel.mp4 --props src/sample-props.json --overwrite --codec h264 --crf 18"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.465",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.465"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.4.5"
+  }
+}
