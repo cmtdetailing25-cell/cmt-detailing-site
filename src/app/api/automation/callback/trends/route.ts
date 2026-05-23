@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateCallbackSecret } from "@/lib/automation";
+import { AutomationRunStatus } from "@prisma/client";
 
 // n8n calls this when trend research is complete.
 // Body: { campaignId, workflowRunId?, executionId?,
@@ -114,42 +115,73 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Resolve the matching workflow run (triple fallback) ────────────────
+    // Status and completedAt are updated FIRST in a separate write so that a
+    // JSON serialization quirk on outputPayload can never block the critical
+    // status transition. outputPayload is saved in a follow-up update.
+    //
     // 1. Direct run ID echoed back from n8n — most reliable
     // 2. n8n execution ID stored on the run
     // 3. Latest RUNNING or PENDING TREND_RESEARCH run for this campaign
 
-    let runUpdated = 0;
-    const runData = { status: "COMPLETED" as const, outputPayload: body as never, completedAt: new Date() };
+    const statusData = { status: AutomationRunStatus.COMPLETED, completedAt: new Date() };
+    let runUpdated   = 0;
+    let matchedRunId: string | null = null;
 
     if (cleanRunId) {
       const r = await prisma.automationWorkflowRun.updateMany({
         where: { id: cleanRunId, campaignId: cleanCampaignId },
-        data:  runData,
+        data:  statusData,
       });
       runUpdated = r.count;
+      if (runUpdated > 0) matchedRunId = cleanRunId;
+      console.log("[trend callback] updated run via workflowRunId", { cleanRunId, count: r.count, status: "COMPLETED" });
     }
 
     if (runUpdated === 0 && cleanExecutionId) {
       const r = await prisma.automationWorkflowRun.updateMany({
         where: { n8nExecutionId: cleanExecutionId },
-        data:  runData,
+        data:  statusData,
       });
       runUpdated = r.count;
+      console.log("[trend callback] updated run via executionId", { cleanExecutionId, count: r.count, status: "COMPLETED" });
     }
 
     if (runUpdated === 0) {
-      const r = await prisma.automationWorkflowRun.updateMany({
+      // Find the run ID first so we can save outputPayload afterwards
+      const activeRun = await prisma.automationWorkflowRun.findFirst({
         where: {
           campaignId:   cleanCampaignId,
           workflowType: "TREND_RESEARCH",
-          status:       { in: ["RUNNING", "PENDING"] },
+          status:       { in: [AutomationRunStatus.RUNNING, AutomationRunStatus.PENDING] },
         },
-        data: runData,
+        orderBy: { createdAt: "desc" },
       });
-      runUpdated = r.count;
+      if (activeRun) {
+        const r = await prisma.automationWorkflowRun.updateMany({
+          where: { id: activeRun.id },
+          data:  statusData,
+        });
+        runUpdated = r.count;
+        matchedRunId = activeRun.id;
+        console.log("[trend callback] updated run via fallback scan", { id: activeRun.id, count: r.count, status: "COMPLETED" });
+      } else {
+        console.warn("[trend callback] no RUNNING/PENDING TREND_RESEARCH run found for campaign", cleanCampaignId);
+      }
     }
 
-    console.log("[trends callback] Run update:", { cleanRunId, cleanExecutionId, runUpdated });
+    // Save outputPayload on the matched run (non-critical; errors are logged but not fatal)
+    if (matchedRunId) {
+      try {
+        await prisma.automationWorkflowRun.update({
+          where: { id: matchedRunId },
+          data:  { outputPayload: body as never },
+        });
+      } catch (e) {
+        console.warn("[trend callback] outputPayload save failed (non-fatal)", e);
+      }
+    }
+
+    console.log("[trend callback] run resolution summary:", { cleanRunId, cleanExecutionId, runUpdated, matchedRunId });
 
     // ── Update campaign + create notification ──────────────────────────────
     await Promise.all([

@@ -92,14 +92,23 @@ export async function triggerWorkflow(opts: TriggerOptions) {
   const result = await callN8nWebhook(webhookUrl, enrichedPayload, settings.webhookSecret ?? "");
 
   // ── Update run with n8n response ───────────────────────────────────────────
-  await prisma.automationWorkflowRun.update({
-    where: { id: run.id },
-    data: {
-      status:         result.ok ? "RUNNING" : "FAILED",
-      n8nExecutionId: (result.data as Record<string, string> | null)?.executionId ?? null,
-      errorMessage:   result.ok ? null : `n8n returned HTTP ${result.status}`,
-    },
-  });
+  // Use updateMany with status:"PENDING" guard so a fast n8n callback that already
+  // set status:"COMPLETED" is not overwritten back to "RUNNING" here.
+  const n8nExecutionId = (result.data as Record<string, string> | null)?.executionId ?? null;
+
+  if (result.ok) {
+    // PENDING → RUNNING only; if the callback completed it already, this is a no-op
+    await prisma.automationWorkflowRun.updateMany({
+      where: { id: run.id, status: "PENDING" },
+      data:  { status: "RUNNING", n8nExecutionId, errorMessage: null },
+    });
+  } else {
+    // n8n rejected the webhook — mark FAILED regardless of current status
+    await prisma.automationWorkflowRun.update({
+      where: { id: run.id },
+      data:  { status: "FAILED", errorMessage: `n8n returned HTTP ${result.status}` },
+    });
+  }
 
   return NextResponse.json({ ok: result.ok, runId: run.id, campaignId });
 }

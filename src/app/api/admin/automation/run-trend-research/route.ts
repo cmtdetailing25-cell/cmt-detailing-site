@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
       campaignType:      campaign.type,
       goal:              campaign.goal,
       platform:          campaign.platform,
-      callbackUrl:       `${callbackBase}/api/automation/callback/strategy`,
+      callbackUrl:       `${callbackBase}/api/automation/callback/trends`,
     }),
   });
 }
