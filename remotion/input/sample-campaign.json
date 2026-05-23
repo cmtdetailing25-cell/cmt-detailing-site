@@ -1,0 +1,20 @@
+{
+  "campaignId": "mustang-detail-001",
+  "workflowRunId": "run-local-test-001",
+  "campaignTitle": "2022 Mustang GT Full Detail",
+  "approvedStrategy": {
+    "hook": "This Mustang GT came in covered in swirl marks",
+    "angle": "before-after transformation",
+    "platform": "Instagram"
+  },
+  "approvedCaption": "This Mustang GT came in covered in swirl marks — it left with a mirror finish. Full paint correction + ceramic coating in Taunton, MA.",
+  "approvedHashtags": "#cmtdetailing #paintcorrection #ceramiccoating #mustang #fordmustang #detailing #taunton #mobiledetail",
+  "approvedCreativeNotes": "Book your mobile detail",
+  "media": {
+    "before": [],
+    "process": [],
+    "after": [],
+    "thumbnail": []
+  },
+  "outputCallbackUrl": "http://localhost:3000/api/automation/callback/remotion-video"
+}
