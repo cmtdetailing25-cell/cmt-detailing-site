@@ -1,8 +1,9 @@
 FROM node:20-bookworm-slim
 
-# System dependencies required by Chromium/Remotion on Linux
+# System dependencies required by Chromium and FFmpeg on Linux
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    ffmpeg \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -36,6 +37,7 @@ COPY package.json ./
 # Install deps — npm install (not npm ci) so platform-specific Remotion
 # compositor packages are resolved for linux-x64 instead of the lock file's
 # win32-x64 entries from the developer's machine.
+# --omit=dev skips @types/* and typescript; tsx is in dependencies so it IS installed.
 RUN npm install --omit=dev
 
 # Download Chromium Headless Shell used by Remotion renderer
