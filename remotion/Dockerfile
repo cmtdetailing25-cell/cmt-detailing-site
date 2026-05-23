@@ -41,8 +41,13 @@ COPY package.json ./
 #      built for win32-x64 on the dev machine and won't work on linux-x64 here.
 RUN npm install
 
-# Download Chromium Headless Shell used by Remotion renderer
-RUN npx remotion browser ensure
+# Confirm the @remotion/cli binary is wired up (visible in Railway build logs)
+RUN ls node_modules/.bin | grep remotion
+
+# Download Chromium Headless Shell used by Remotion renderer.
+# Use the direct binary path — npx finds the base `remotion` package first (it has
+# no bin field) and exits with "could not determine executable to run".
+RUN ./node_modules/.bin/remotion browser ensure
 
 # Copy the rest of the source
 COPY . .
