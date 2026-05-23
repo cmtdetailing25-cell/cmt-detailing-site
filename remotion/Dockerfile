@@ -34,11 +34,12 @@ WORKDIR /app
 # Copy package manifests first for layer caching
 COPY package.json ./
 
-# Install deps — npm install (not npm ci) so platform-specific Remotion
-# compositor packages are resolved for linux-x64 instead of the lock file's
-# win32-x64 entries from the developer's machine.
-# --omit=dev skips @types/* and typescript; tsx is in dependencies so it IS installed.
-RUN npm install --omit=dev
+# Full install (not --omit=dev, not npm ci) for two reasons:
+#   1. npx resolves binaries from node_modules/.bin — a partial install can leave
+#      the remotion binary absent even when @remotion/cli is in dependencies.
+#   2. npm ci uses the lock file's platform-specific compositor packages, which were
+#      built for win32-x64 on the dev machine and won't work on linux-x64 here.
+RUN npm install
 
 # Download Chromium Headless Shell used by Remotion renderer
 RUN npx remotion browser ensure
