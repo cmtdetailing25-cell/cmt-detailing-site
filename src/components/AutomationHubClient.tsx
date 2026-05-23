@@ -403,12 +403,25 @@ function CampaignCard({
       {campaign.status === "VIDEO_READY_REVIEW" && (
         <div className="rounded-lg overflow-hidden mb-3 border border-[#2d3840] bg-[#0e1520]">
           {videoAsset?.thumbnailUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={videoAsset.thumbnailUrl}
-              alt="Video thumbnail"
-              className="w-full aspect-video object-cover"
-            />
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={videoAsset.thumbnailUrl}
+                alt="Video thumbnail"
+                className="w-full aspect-video object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                  const placeholder = (e.currentTarget as HTMLImageElement).nextElementSibling as HTMLElement | null;
+                  if (placeholder) placeholder.style.display = "flex";
+                }}
+              />
+              <div
+                style={{ display: "none" }}
+                className="aspect-video items-center justify-center bg-[#0e1520]"
+              >
+                <p className="text-[10px] text-[#708289]">Video Preview</p>
+              </div>
+            </>
           ) : videoAsset?.url ? (
             <div className="aspect-video flex items-center justify-center">
               <div className="flex flex-col items-center gap-1.5">

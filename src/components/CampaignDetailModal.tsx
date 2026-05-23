@@ -21,6 +21,7 @@ interface AssetDetail {
   title: string;
   notes: string | null;
   status: string;
+  createdAt: string;
 }
 
 interface CampaignDetail {
@@ -68,6 +69,69 @@ const WORKFLOW_TYPE_LABEL: Record<string, string> = {
 
 function fmtWorkflowType(t: string): string {
   return WORKFLOW_TYPE_LABEL[t] ?? t.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function fmtDate(iso: string | null | undefined): string {
+  return iso
+    ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
+    : "—";
+}
+
+const BTN_CLS = "text-[10px] font-semibold px-2 py-1 rounded bg-[#1e2730] border border-[#434e56] text-[#94b2b6] hover:text-white hover:border-[#94b2b6] transition-colors";
+
+function VideoAssetCard({ asset, isLatest }: { asset: AssetDetail; isLatest: boolean }) {
+  const [videoErrored, setVideoErrored] = useState(false);
+
+  return (
+    <div className="bg-[#0e1520] border border-[#2d3840] rounded-xl overflow-hidden">
+      {!isLatest && (
+        <div className="px-3 py-1.5 bg-[#1a2128] border-b border-[#2d3840]">
+          <p className="text-[10px] text-[#434e56]">Previous render</p>
+        </div>
+      )}
+
+      {asset.url ? (
+        <>
+          {!videoErrored ? (
+            /* eslint-disable-next-line jsx-a11y/media-has-caption */
+            <video
+              controls
+              className="w-full max-h-64 bg-black"
+              poster={asset.thumbnailUrl ?? undefined}
+              src={asset.url}
+              onError={() => setVideoErrored(true)}
+            />
+          ) : (
+            <div className="aspect-video flex flex-col items-center justify-center gap-2 bg-[#0e1520]">
+              <p className="text-xs text-red-400">Video failed to load</p>
+              <a href={asset.url} target="_blank" rel="noopener noreferrer" className={BTN_CLS}>
+                Open URL ↗
+              </a>
+            </div>
+          )}
+          <div className="p-3 space-y-2">
+            <p className="text-xs text-[#e9f0ef] font-medium">{asset.title}</p>
+            {asset.notes && <p className="text-[10px] text-[#708289]">{asset.notes}</p>}
+            <p className="text-[10px] text-[#434e56]">Rendered: {fmtDate(asset.createdAt)}</p>
+            <div className="flex gap-2 flex-wrap">
+              {!videoErrored && (
+                <a href={asset.url} target="_blank" rel="noopener noreferrer" className={BTN_CLS}>
+                  Open Video ↗
+                </a>
+              )}
+              <a href={asset.url} download className={BTN_CLS}>Download</a>
+              <CopyButton text={asset.url} label="Copy URL" />
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="px-4 py-3 flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+          <p className="text-xs text-red-400">Video asset missing — URL not returned by Remotion callback</p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function CopyButton({ text, label }: { text: string; label: string }) {
@@ -129,9 +193,6 @@ export default function CampaignDetailModal({ campaignId, onClose }: Props) {
       setRunBusy((p) => ({ ...p, [runId]: false }));
     }
   }
-
-  const fmtDate = (iso: string | null | undefined) =>
-    iso ? new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -225,61 +286,18 @@ export default function CampaignDetailModal({ campaignId, onClose }: Props) {
               )}
 
               {/* Video Assets */}
-              {(() => {
-                const videoAssets = campaign.assets.filter((a) => a.type === "REMOTION_VIDEO");
-                if (videoAssets.length === 0) return null;
-                return (
-                  <div className="border-t border-[#2d3840] pt-4 space-y-4">
-                    <p className="text-[10px] text-[#708289] uppercase tracking-wider font-semibold">
-                      Video Assets ({videoAssets.length})
-                    </p>
-                    {videoAssets.map((asset) => (
-                      <div key={asset.id} className="bg-[#0e1520] border border-[#2d3840] rounded-xl overflow-hidden">
-                        {asset.url ? (
-                          <>
-                            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                            <video
-                              controls
-                              className="w-full max-h-64 bg-black"
-                              poster={asset.thumbnailUrl ?? undefined}
-                              src={asset.url}
-                            />
-                            <div className="p-3 space-y-2">
-                              <p className="text-xs text-[#e9f0ef] font-medium">{asset.title}</p>
-                              {asset.notes && <p className="text-[10px] text-[#708289]">{asset.notes}</p>}
-                              <div className="flex gap-2 flex-wrap">
-                                <a
-                                  href={asset.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[10px] font-semibold px-2 py-1 rounded bg-[#1e2730] border border-[#434e56] text-[#94b2b6] hover:text-white hover:border-[#94b2b6] transition-colors"
-                                >
-                                  Open Video ↗
-                                </a>
-                                <a
-                                  href={asset.url}
-                                  download
-                                  className="text-[10px] font-semibold px-2 py-1 rounded bg-[#1e2730] border border-[#434e56] text-[#94b2b6] hover:text-white hover:border-[#94b2b6] transition-colors"
-                                >
-                                  Download
-                                </a>
-                                <CopyButton text={asset.url} label="Copy URL" />
-                              </div>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="px-4 py-3 flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
-                            <p className="text-xs text-red-400">
-                              Video asset missing — URL not returned by Remotion callback
-                            </p>
-                          </div>
-                        )}
-                      </div>
+              {campaign.assets.filter((a) => a.type === "REMOTION_VIDEO").length > 0 && (
+                <div className="border-t border-[#2d3840] pt-4 space-y-4">
+                  <p className="text-[10px] text-[#708289] uppercase tracking-wider font-semibold">
+                    Video Assets ({campaign.assets.filter((a) => a.type === "REMOTION_VIDEO").length})
+                  </p>
+                  {campaign.assets
+                    .filter((a) => a.type === "REMOTION_VIDEO")
+                    .map((asset, idx) => (
+                      <VideoAssetCard key={asset.id} asset={asset} isLatest={idx === 0} />
                     ))}
-                  </div>
-                );
-              })()}
+                </div>
+              )}
 
               {/* Workflow Runs */}
               <div className="border-t border-[#2d3840] pt-4">

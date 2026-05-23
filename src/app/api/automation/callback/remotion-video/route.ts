@@ -5,7 +5,7 @@ import { AutomationRunStatus, AssetType, AssetProvider, AssetStatus } from "@pri
 
 // n8n calls this when Remotion finishes rendering.
 // Body: { campaignId, workflowRunId?, executionId?,
-//         videoUrl, thumbnailUrl?, format?, durationSeconds? }
+//         videoUrl, thumbnailUrl?, format?, durationSeconds?, renderId? }
 
 export const dynamic = "force-dynamic";
 
@@ -31,12 +31,13 @@ export async function POST(req: NextRequest) {
 
   const {
     campaignId,
-    workflowRunId: rawWorkflowRunId,
-    executionId:   rawExecutionId,
-    videoUrl:      rawVideoUrl,
-    thumbnailUrl:  rawThumbnailUrl,
-    format:        rawFormat,
+    workflowRunId:   rawWorkflowRunId,
+    executionId:     rawExecutionId,
+    videoUrl:        rawVideoUrl,
+    thumbnailUrl:    rawThumbnailUrl,
+    format:          rawFormat,
     durationSeconds: rawDuration,
+    renderId:        rawRenderId,
   } = body;
 
   if (!campaignId) {
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
   const thumbnailUrl     = str(rawThumbnailUrl);
   const format           = str(rawFormat)    ?? "mp4";
   const durationStr      = rawDuration != null ? String(rawDuration) : "?";
+  const cleanRenderId    = str(rawRenderId);
 
   console.log("[remotion-video callback] IDs:", { cleanCampaignId, cleanRunId, cleanExecutionId, videoUrl });
 
@@ -129,20 +131,44 @@ export async function POST(req: NextRequest) {
 
     console.log("[remotion-video callback] run resolution:", { runUpdated, matchedRunId });
 
-    // ── Attach rendered video asset + move campaign ────────────────────────
-    await Promise.all([
-      prisma.marketingAsset.create({
+    // ── Upsert rendered video asset (dedup by campaignId + type + url) ───────
+    const assetTitle = `Remotion ${format} Video — ${durationStr}s`;
+    const assetNotes = [
+      `Format: ${format}`,
+      `Duration: ${durationStr}s`,
+      cleanRenderId ? `RenderID: ${cleanRenderId}` : null,
+    ].filter(Boolean).join(" · ");
+
+    const existingAsset = await prisma.marketingAsset.findFirst({
+      where: { campaignId: cleanCampaignId, type: AssetType.REMOTION_VIDEO, url: videoUrl },
+    });
+
+    let assetUpdated = false;
+    if (existingAsset) {
+      await prisma.marketingAsset.update({
+        where: { id: existingAsset.id },
+        data:  { thumbnailUrl, title: assetTitle, notes: assetNotes, status: AssetStatus.READY },
+      });
+      assetUpdated = true;
+      console.log("[remotion-video callback] updated existing asset", existingAsset.id);
+    } else {
+      await prisma.marketingAsset.create({
         data: {
           campaignId:   cleanCampaignId,
           type:         AssetType.REMOTION_VIDEO,
           provider:     AssetProvider.REMOTION,
           url:          videoUrl,
-          thumbnailUrl: thumbnailUrl,
-          title:        `Remotion ${format} Video — ${durationStr}s`,
+          thumbnailUrl,
+          title:        assetTitle,
           status:       AssetStatus.READY,
-          notes:        `Format: ${format} · Duration: ${durationStr}s`,
+          notes:        assetNotes,
         },
-      }),
+      });
+      console.log("[remotion-video callback] created new asset");
+    }
+
+    // ── Move campaign + notify ─────────────────────────────────────────────
+    await Promise.all([
       prisma.marketingCampaign.update({
         where: { id: cleanCampaignId },
         data:  { status: "VIDEO_READY_REVIEW" },
@@ -161,6 +187,7 @@ export async function POST(req: NextRequest) {
       ok:              true,
       cleanCampaignId,
       videoAttached:   true,
+      assetUpdated,
       runUpdatedCount: runUpdated,
     });
   } catch (err) {
