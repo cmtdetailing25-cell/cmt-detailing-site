@@ -16,6 +16,17 @@ export async function GET(
         vehicle:          true,
         detailJob:        { include: { photos: { take: 5 } } },
         trendInsight:     true,
+        campaignMedia: {
+          include: {
+            sitePhoto: {
+              select: {
+                id: true, imageUrl: true, title: true, category: true,
+                label: true, fileType: true, width: true, height: true, duration: true,
+              },
+            },
+          },
+          orderBy: { sortOrder: "asc" },
+        },
       },
     });
     if (!campaign) return NextResponse.json({ error: "Not found" }, { status: 404 });

@@ -241,10 +241,16 @@ model SitePhoto {
   lastReviewedForSocial  DateTime?
   reviewedByAgent        Boolean   @default(false)
 
+  fileType  String?
+  width     Int?
+  height    Int?
+  duration  Float?
+
   detailJobId String?
   detailJob   DetailJob?           @relation(fields: [detailJobId], references: [id])
 
-  socialMedia SocialContentMedia[]
+  socialMedia   SocialContentMedia[]
+  campaignMedia CampaignMedia[]
 }
 
 // ─── Social Media Agent models ────────────────────────────────────────────────
@@ -534,6 +540,7 @@ model MarketingCampaign {
   assets           MarketingAsset[]
   workflowRuns     AutomationWorkflowRun[]
   performanceStats MarketingPerformanceStat[]
+  campaignMedia    CampaignMedia[]
 }
 
 model MarketingAsset {
@@ -591,4 +598,23 @@ model MarketingPerformanceStat {
   updatedAt   DateTime @updatedAt
 
   campaign MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+}
+
+// ─── Campaign Media ───────────────────────────────────────────────────────────
+// Join table: links SitePhoto records to a MarketingCampaign with a creative role.
+// Used to build the real-media payload for Remotion renders.
+
+model CampaignMedia {
+  id          String   @id @default(cuid())
+  campaignId  String
+  sitePhotoId String
+  role        String   @default("general")
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaign  MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  sitePhoto SitePhoto         @relation(fields: [sitePhotoId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, sitePhotoId])
 }

@@ -472,6 +472,21 @@ function CampaignCard({
         </button>
       )}
 
+      {/* Test Render fallback — always available at VIDEO_RENDER_PENDING */}
+      {!isProcessing && campaign.status === "VIDEO_RENDER_PENDING" && (
+        <button
+          onClick={() => onAction({
+            label: "Test Render",
+            route: "/api/admin/automation/create-remotion-video",
+            body:  { campaignId: campaign.id, isTestRender: true },
+          })}
+          disabled={loading}
+          className="w-full mt-1 text-[10px] text-[#434e56] hover:text-[#708289] py-1 transition-colors disabled:opacity-50"
+        >
+          or Test Render (no media required)
+        </button>
+      )}
+
       <button
         onClick={onDetail}
         className="w-full mt-2 text-[11px] text-[#708289] hover:text-[#94b2b6] py-1.5 rounded-lg transition-colors border border-transparent hover:border-[#2d3840]"

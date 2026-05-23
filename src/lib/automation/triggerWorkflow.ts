@@ -22,6 +22,17 @@ async function loadCampaign(id: string) {
       vehicle:     { select: { year: true, make: true, model: true, color: true } },
       detailJob:   { include: { photos: { where: { isSocialReady: true }, take: 10, select: { imageUrl: true, title: true, socialTitle: true } } } },
       trendInsight:{ select: { title: true, category: true, exampleHook: true, suggestedUse: true, hashtags: true } },
+      campaignMedia: {
+        include: {
+          sitePhoto: {
+            select: {
+              id: true, imageUrl: true, title: true, category: true, label: true,
+              fileType: true, width: true, height: true, duration: true,
+            },
+          },
+        },
+        orderBy: { sortOrder: "asc" },
+      },
     },
   });
 }

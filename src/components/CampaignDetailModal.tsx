@@ -13,6 +13,28 @@ interface WorkflowRun {
   createdAt: string;
 }
 
+interface CampaignMediaItem {
+  id: string;
+  role: string;
+  sortOrder: number;
+  sitePhoto: {
+    id: string;
+    imageUrl: string;
+    title: string;
+    category: string;
+    label: string | null;
+    fileType: string | null;
+  };
+}
+
+interface LibraryPhoto {
+  id: string;
+  imageUrl: string;
+  title: string;
+  category: string;
+  label: string | null;
+}
+
 interface AssetDetail {
   id: string;
   type: string;
@@ -42,6 +64,7 @@ interface CampaignDetail {
   createdAt: string;
   updatedAt: string;
   assets: AssetDetail[];
+  campaignMedia: CampaignMediaItem[];
   workflowRuns: WorkflowRun[];
 }
 
@@ -78,6 +101,26 @@ function fmtDate(iso: string | null | undefined): string {
 }
 
 const BTN_CLS = "text-[10px] font-semibold px-2 py-1 rounded bg-[#1e2730] border border-[#434e56] text-[#94b2b6] hover:text-white hover:border-[#94b2b6] transition-colors";
+
+const CAMPAIGN_ROLES = [
+  { value: "before",    label: "Before"         },
+  { value: "process",   label: "Process"         },
+  { value: "after",     label: "After"           },
+  { value: "reveal",    label: "Reveal"          },
+  { value: "logo",      label: "Logo / Branding" },
+  { value: "thumbnail", label: "Thumbnail"       },
+  { value: "general",   label: "General"         },
+];
+
+const ROLE_CLS: Record<string, string> = {
+  before:    "bg-zinc-800 text-zinc-300",
+  process:   "bg-blue-900/40 text-blue-400",
+  after:     "bg-green-900/40 text-green-400",
+  reveal:    "bg-violet-900/40 text-violet-300",
+  logo:      "bg-purple-900/30 text-purple-400",
+  thumbnail: "bg-amber-900/30 text-amber-400",
+  general:   "bg-gray-800 text-gray-400",
+};
 
 function VideoAssetCard({ asset, isLatest }: { asset: AssetDetail; isLatest: boolean }) {
   const [videoErrored, setVideoErrored] = useState(false);
@@ -160,10 +203,18 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 }
 
 export default function CampaignDetailModal({ campaignId, onClose }: Props) {
-  const [campaign,    setCampaign]    = useState<CampaignDetail | null>(null);
-  const [loading,     setLoading]     = useState(true);
-  const [error,       setError]       = useState<string | null>(null);
-  const [runBusy,     setRunBusy]     = useState<Record<string, boolean>>({});
+  const [campaign,       setCampaign]       = useState<CampaignDetail | null>(null);
+  const [loading,        setLoading]        = useState(true);
+  const [error,          setError]          = useState<string | null>(null);
+  const [runBusy,        setRunBusy]        = useState<Record<string, boolean>>({});
+  // Campaign Media state
+  const [mediaItems,     setMediaItems]     = useState<CampaignMediaItem[]>([]);
+  const [mediaBusy,      setMediaBusy]      = useState<Record<string, boolean>>({});
+  const [mediaLoading,   setMediaLoading]   = useState(false);
+  const [showPicker,     setShowPicker]     = useState(false);
+  const [libraryPhotos,  setLibraryPhotos]  = useState<LibraryPhoto[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [pickerSearch,   setPickerSearch]   = useState("");
 
   const loadCampaign = useCallback(() => {
     setLoading(true);
@@ -171,8 +222,12 @@ export default function CampaignDetailModal({ campaignId, onClose }: Props) {
     fetch(`/api/admin/automation/campaigns/${campaignId}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.campaign) setCampaign(data.campaign);
-        else setError(data.error ?? "Failed to load");
+        if (data.campaign) {
+          setCampaign(data.campaign);
+          setMediaItems(data.campaign.campaignMedia ?? []);
+        } else {
+          setError(data.error ?? "Failed to load");
+        }
       })
       .catch(() => setError("Network error"))
       .finally(() => setLoading(false));
@@ -191,6 +246,63 @@ export default function CampaignDetailModal({ campaignId, onClose }: Props) {
       loadCampaign();
     } finally {
       setRunBusy((p) => ({ ...p, [runId]: false }));
+    }
+  }
+
+  const loadLibraryPhotos = useCallback(async () => {
+    setLibraryLoading(true);
+    try {
+      const res = await fetch("/api/admin/media");
+      if (res.ok) setLibraryPhotos(await res.json());
+    } finally {
+      setLibraryLoading(false);
+    }
+  }, []);
+
+  async function attachMedia(sitePhotoId: string, role: string) {
+    setMediaLoading(true);
+    try {
+      const res = await fetch(`/api/admin/automation/campaigns/${campaignId}/media`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ sitePhotoId, role }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMediaItems((prev) => {
+          const idx = prev.findIndex((m) => m.sitePhoto.id === sitePhotoId);
+          return idx >= 0 ? prev.map((m, i) => i === idx ? data.media : m) : [...prev, data.media];
+        });
+      }
+    } finally {
+      setMediaLoading(false);
+    }
+  }
+
+  async function removeMedia(mediaId: string) {
+    setMediaBusy((p) => ({ ...p, [mediaId]: true }));
+    try {
+      await fetch(`/api/admin/automation/campaigns/${campaignId}/media/${mediaId}`, { method: "DELETE" });
+      setMediaItems((prev) => prev.filter((m) => m.id !== mediaId));
+    } finally {
+      setMediaBusy((p) => { const n = { ...p }; delete n[mediaId]; return n; });
+    }
+  }
+
+  async function updateMediaRole(mediaId: string, role: string) {
+    setMediaBusy((p) => ({ ...p, [mediaId]: true }));
+    try {
+      const res = await fetch(`/api/admin/automation/campaigns/${campaignId}/media/${mediaId}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ role }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMediaItems((prev) => prev.map((m) => m.id === mediaId ? data.media : m));
+      }
+    } finally {
+      setMediaBusy((p) => { const n = { ...p }; delete n[mediaId]; return n; });
     }
   }
 
@@ -284,6 +396,132 @@ export default function CampaignDetailModal({ campaignId, onClose }: Props) {
                   <Field label="Creative Notes"    value={campaign.approvedCreativeNotes} />
                 </div>
               )}
+
+              {/* Campaign Media */}
+              <div className="border-t border-[#2d3840] pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[10px] text-[#708289] uppercase tracking-wider font-semibold">
+                    Campaign Media ({mediaItems.length})
+                  </p>
+                  <button
+                    onClick={() => { setShowPicker(!showPicker); if (!showPicker && libraryPhotos.length === 0) loadLibraryPhotos(); }}
+                    className={BTN_CLS}
+                  >
+                    {showPicker ? "Close Picker" : "+ Add from Library"}
+                  </button>
+                </div>
+
+                {/* No media warning */}
+                {mediaItems.length === 0 && (
+                  <div className="flex items-start gap-2 bg-amber-950/30 border border-amber-800/30 rounded-lg px-3 py-2.5 mb-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 mt-1" />
+                    <p className="text-[10px] text-amber-300/80 leading-relaxed">
+                      No media attached. Render will be a placeholder test only. Attach at least 1 before, 1 process, and 1 after photo for a real render.
+                    </p>
+                  </div>
+                )}
+
+                {/* Role coverage hint */}
+                {mediaItems.length > 0 && (() => {
+                  const roles = new Set(mediaItems.map((m) => m.role));
+                  const hasAfter = roles.has("after") || roles.has("reveal");
+                  const missing = [
+                    !roles.has("before")  && "before",
+                    !roles.has("process") && "process",
+                    !hasAfter             && "after/reveal",
+                  ].filter(Boolean) as string[];
+                  if (missing.length === 0) return null;
+                  return (
+                    <p className="text-[10px] text-amber-500 mb-3">
+                      Missing roles: {missing.join(", ")} — reel structure may be incomplete.
+                    </p>
+                  );
+                })()}
+
+                {/* Attached grid */}
+                {mediaItems.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {mediaItems.map((item) => (
+                      <div key={item.id} className="bg-[#0e1520] border border-[#2d3840] rounded-lg overflow-hidden">
+                        <div className="relative aspect-square">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={item.sitePhoto.imageUrl} alt={item.sitePhoto.title} className="w-full h-full object-cover" />
+                          <span className={`absolute top-1 left-1 text-[9px] font-bold px-1 py-0.5 rounded ${ROLE_CLS[item.role] ?? ROLE_CLS.general}`}>
+                            {item.role}
+                          </span>
+                          <button
+                            onClick={() => removeMedia(item.id)}
+                            disabled={mediaBusy[item.id]}
+                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 hover:bg-red-600 flex items-center justify-center text-white text-xs transition-colors disabled:opacity-50"
+                            title="Remove"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="p-1.5">
+                          <p className="text-[9px] text-[#708289] truncate mb-1" title={item.sitePhoto.title}>{item.sitePhoto.title}</p>
+                          <select
+                            value={item.role}
+                            onChange={(e) => updateMediaRole(item.id, e.target.value)}
+                            disabled={mediaBusy[item.id]}
+                            className="w-full bg-[#1a2128] border border-[#2d3840] rounded px-1 py-0.5 text-[9px] text-[#e9f0ef] focus:outline-none focus:border-[#94b2b6] disabled:opacity-50"
+                          >
+                            {CAMPAIGN_ROLES.map((r) => (
+                              <option key={r.value} value={r.value}>{r.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Photo picker */}
+                {showPicker && (
+                  <div className="border border-[#2d3840] rounded-xl p-3 bg-[#0e1520]">
+                    <input
+                      type="text"
+                      value={pickerSearch}
+                      onChange={(e) => setPickerSearch(e.target.value)}
+                      placeholder="Search library by title or category…"
+                      className="w-full bg-[#1a2128] border border-[#2d3840] rounded px-2 py-1.5 text-xs text-[#e9f0ef] placeholder-[#434e56] focus:outline-none focus:border-[#94b2b6] mb-3"
+                    />
+                    {libraryLoading ? (
+                      <p className="text-[10px] text-[#708289] text-center py-4">Loading library…</p>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-4 gap-2 max-h-56 overflow-y-auto pr-1">
+                          {libraryPhotos
+                            .filter((p) => {
+                              if (mediaItems.some((m) => m.sitePhoto.id === p.id)) return false;
+                              if (!pickerSearch) return true;
+                              const q = pickerSearch.toLowerCase();
+                              return p.title.toLowerCase().includes(q) || p.category.toLowerCase().includes(q);
+                            })
+                            .map((photo) => (
+                              <button
+                                key={photo.id}
+                                onClick={() => attachMedia(photo.id, photo.label ?? "general")}
+                                disabled={mediaLoading}
+                                className="relative aspect-square rounded overflow-hidden border border-transparent hover:border-[#94b2b6] group transition-colors disabled:opacity-50"
+                                title={photo.title}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={photo.imageUrl} alt={photo.title} className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                  <span className="text-[10px] text-white font-bold">+ Add</span>
+                                </div>
+                              </button>
+                            ))}
+                        </div>
+                        <p className="text-[10px] text-[#434e56] mt-2">
+                          Click a photo to attach it. Role is auto-set from the photo&apos;s label — change it in the grid above.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Video Assets */}
               {campaign.assets.filter((a) => a.type === "REMOTION_VIDEO").length > 0 && (

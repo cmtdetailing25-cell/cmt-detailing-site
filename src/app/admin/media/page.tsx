@@ -71,6 +71,13 @@ const CATEGORIES = [
 
 const LABEL_OPTIONS = ["before", "after", "interior", "exterior", "detail", "coating"];
 
+const CONTENT_TAGS = [
+  "before", "after", "interior", "exterior", "process",
+  "ceramic", "paint correction", "wheels", "final reveal",
+];
+
+interface CampaignOption { id: string; title: string; status: string; }
+
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "recent",     label: "Most Recent" },
   { value: "oldest",     label: "Oldest First" },
@@ -230,6 +237,9 @@ interface PhotoCardProps {
   onSave: () => void;
   onDelete: () => void;
   onChange: <K extends keyof EditDraft>(field: K, value: EditDraft[K]) => void;
+  selecting: boolean;
+  selected: boolean;
+  onSelect: (v: boolean) => void;
 }
 
 function PhotoCard({
@@ -243,22 +253,48 @@ function PhotoCard({
   onSave,
   onDelete,
   onChange,
+  selecting,
+  selected,
+  onSelect,
 }: PhotoCardProps) {
   return (
     <div
-      className={`bg-gray-900 rounded-xl overflow-hidden group transition-colors ${
-        isEditing ? "border-2 border-red-600/60" : "border border-gray-800"
+      onClick={selecting ? () => onSelect(!selected) : undefined}
+      className={`bg-gray-900 rounded-xl overflow-hidden group transition-all ${
+        selecting ? "cursor-pointer" : ""
+      } ${
+        selected
+          ? "border-2 border-red-500 ring-1 ring-red-500/40"
+          : isEditing
+          ? "border-2 border-red-600/60"
+          : "border border-gray-800"
       }`}
     >
       <div className="relative aspect-square bg-gray-800">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={photo.imageUrl} alt={photo.title} className="w-full h-full object-cover" />
-        {photo.isFeatured && (
+        {selecting && (
+          <div className="absolute inset-0 bg-black/20 z-10 pointer-events-none" />
+        )}
+        {selecting && (
+          <div
+            className={`absolute top-2 left-2 z-20 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+              selected ? "bg-red-600 border-red-600" : "bg-black/60 border-gray-400"
+            }`}
+          >
+            {selected && (
+              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+          </div>
+        )}
+        {!selecting && photo.isFeatured && (
           <span className="absolute top-2 left-2 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
             FEAT
           </span>
         )}
-        {!isEditing && (
+        {!selecting && !isEditing && (
           <button
             onClick={onDelete}
             className="absolute top-2 right-2 bg-black/70 hover:bg-red-600 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-all"
@@ -390,12 +426,14 @@ function PhotoCard({
               #{photo.displayOrder}
             </span>
           </div>
-          <button
-            onClick={onEdit}
-            className="w-full text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 py-1 rounded transition-colors"
-          >
-            Edit
-          </button>
+          {!selecting && (
+            <button
+              onClick={onEdit}
+              className="w-full text-xs text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 py-1 rounded transition-colors"
+            >
+              Edit
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -443,6 +481,17 @@ export default function MediaPage() {
   const [draft, setDraft] = useState<EditDraft>(DEFAULT_DRAFT);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+
+  // Multi-select + campaign assignment
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [campaigns, setCampaigns] = useState<CampaignOption[]>([]);
+  const [campaignsLoading, setCampaignsLoading] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assignTarget, setAssignTarget] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [assignSuccess, setAssignSuccess] = useState<string | null>(null);
 
   // ── Fetch ────────────────────────────────────────────────────────────────
 
@@ -697,6 +746,65 @@ export default function MediaPage() {
     setDraft((prev) => ({ ...prev, [field]: value }));
   }
 
+  // ── Multi-select + assign ────────────────────────────────────────────────
+
+  const fetchCampaigns = useCallback(async () => {
+    setCampaignsLoading(true);
+    try {
+      const res = await fetch("/api/admin/automation/campaigns");
+      const data = await res.json();
+      setCampaigns(data.campaigns ?? []);
+    } catch {
+      // non-fatal
+    } finally {
+      setCampaignsLoading(false);
+    }
+  }, []);
+
+  function toggleSelectMode() {
+    setSelecting((v) => {
+      if (v) setSelectedIds(new Set());
+      return !v;
+    });
+    setAssignSuccess(null);
+  }
+
+  function handleSelect(id: string, v: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (v) next.add(id); else next.delete(id);
+      return next;
+    });
+  }
+
+  async function handleAssign() {
+    if (!assignTarget || selectedIds.size === 0) return;
+    setAssigning(true);
+    setAssignError(null);
+    try {
+      const res = await fetch(`/api/admin/automation/campaigns/${assignTarget}/media`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sitePhotoIds: Array.from(selectedIds), role: "general" }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Assignment failed");
+      }
+      const campaignTitle = campaigns.find((c) => c.id === assignTarget)?.title ?? "campaign";
+      setShowAssignModal(false);
+      setSelecting(false);
+      setSelectedIds(new Set());
+      setAssignTarget("");
+      setAssignSuccess(`${selectedIds.size} photo${selectedIds.size !== 1 ? "s" : ""} assigned to "${campaignTitle}"`);
+      setTimeout(() => setAssignSuccess(null), 4000);
+    } catch (err) {
+      setAssignError(err instanceof Error ? err.message : "Assignment failed");
+    } finally {
+      setAssigning(false);
+    }
+  }
+
   // ── Computed values ──────────────────────────────────────────────────────
 
   const filtered = photos.filter((p) => {
@@ -930,6 +1038,14 @@ export default function MediaPage() {
 
       {/* ── Library ───────────────────────────────────────────────────────── */}
       <div>
+        {assignSuccess && (
+          <div className="mb-4 flex items-center gap-2 bg-green-950/40 border border-green-700/40 rounded-lg px-4 py-2.5">
+            <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span className="text-sm text-green-300">{assignSuccess}</span>
+          </div>
+        )}
         <div className="flex items-center gap-3 mb-5 flex-wrap">
           <div className="flex items-baseline gap-2 flex-1">
             <h2 className="text-lg font-semibold text-white">Library</h2>
@@ -942,6 +1058,18 @@ export default function MediaPage() {
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={toggleSelectMode}
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                selecting
+                  ? "bg-red-600 text-white"
+                  : "bg-gray-800 text-gray-300 hover:text-white border border-gray-700"
+              }`}
+            >
+              {selecting
+                ? `Cancel${selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}`
+                : "Select"}
+            </button>
             <label className="text-[10px] text-gray-500 uppercase tracking-widest whitespace-nowrap">
               Sort
             </label>
@@ -1021,11 +1149,88 @@ export default function MediaPage() {
                 onSave={() => saveEdit(photo.id)}
                 onDelete={() => handleDelete(photo.id, photo.title)}
                 onChange={updateDraft}
+                selecting={selecting}
+                selected={selectedIds.has(photo.id)}
+                onSelect={(v) => handleSelect(photo.id, v)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* ── Floating selection bar ────────────────────────────────────────── */}
+      {selecting && selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-gray-900 border border-gray-600 rounded-xl px-5 py-3 shadow-2xl">
+          <span className="text-sm text-white font-medium">
+            {selectedIds.size} photo{selectedIds.size !== 1 ? "s" : ""} selected
+          </span>
+          <button
+            onClick={() => { setShowAssignModal(true); fetchCampaigns(); }}
+            className="bg-red-600 hover:bg-red-500 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+          >
+            Assign to Campaign
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-gray-400 hover:text-gray-200 text-sm transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      {/* ── Campaign picker modal ─────────────────────────────────────────── */}
+      {showAssignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-white font-semibold text-base mb-1">
+              Assign to Campaign
+            </h3>
+            <p className="text-gray-400 text-xs mb-4">
+              {selectedIds.size} photo{selectedIds.size !== 1 ? "s" : ""} will be added as General media.
+              You can set roles in Campaign Detail.
+            </p>
+            {campaignsLoading ? (
+              <p className="text-gray-500 text-sm mb-4">Loading campaigns…</p>
+            ) : campaigns.length === 0 ? (
+              <p className="text-gray-500 text-sm mb-4">No campaigns found.</p>
+            ) : (
+              <div className="mb-4">
+                <label className="block text-xs text-gray-400 mb-1.5">Select Campaign</label>
+                <select
+                  value={assignTarget}
+                  onChange={(e) => setAssignTarget(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500"
+                >
+                  <option value="">— choose a campaign —</option>
+                  {campaigns.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title} · {c.status.replace(/_/g, " ")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {assignError && <p className="text-red-400 text-xs mb-3">{assignError}</p>}
+            <div className="flex gap-2">
+              <button
+                onClick={handleAssign}
+                disabled={!assignTarget || assigning || campaignsLoading}
+                className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium py-2 rounded-lg transition-colors"
+              >
+                {assigning ? "Assigning…" : "Assign"}
+              </button>
+              <button
+                onClick={() => { setShowAssignModal(false); setAssignError(null); }}
+                disabled={assigning}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-gray-300 text-sm font-medium py-2 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

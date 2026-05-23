@@ -73,20 +73,43 @@ export async function POST(
           workflowType: "REMOTION_VIDEO_CREATION",
           webhookUrlKey: "remotionWorkflowWebhookUrl",
           // newCampaignStatus intentionally omitted — already set to VIDEO_RENDER_PENDING above
-          buildPayload: (c, base) => ({
-            campaignId:      c.id,
-            videoType:       c.type === "REEL" ? "REEL" : "VIDEO_AD",
-            format:          "9:16",
-            durationSeconds: 15,
-            brand:           "CMT Detailing",
-            style:           "premium automotive, dark cinematic, clean luxury",
-            sourceMedia:     c.detailJob?.photos?.map((p) => p.imageUrl) ?? [],
-            script:          c.approvedStrategy ?? c.campaignBrief ?? "",
-            captionOverlays: c.approvedCaption ? [c.approvedCaption] : [],
-            cta:             c.goal ?? "Book your detail today",
-            platform:        c.platform ?? "Instagram",
-            outputCallbackUrl: `${base}/api/automation/callback/remotion-video`,
-          }),
+          buildPayload: (c, base) => {
+            const media = (c.campaignMedia ?? []).map((cm) => ({
+              id:       cm.sitePhoto.id,
+              url:      cm.sitePhoto.imageUrl,
+              type:     cm.sitePhoto.fileType ?? "image",
+              role:     cm.role,
+              filename: cm.sitePhoto.title,
+              width:    cm.sitePhoto.width    ?? null,
+              height:   cm.sitePhoto.height   ?? null,
+              duration: cm.sitePhoto.duration ?? null,
+            }));
+            return {
+              campaignId:           c.id,
+              campaignTitle:        c.title,
+              videoType:            c.type === "REEL" ? "REEL" : "VIDEO_AD",
+              format:               "9:16",
+              durationSeconds:      15,
+              isTestRender:         media.length === 0,
+              brand:                "CMT Detailing",
+              style:                "premium automotive, dark cinematic, clean luxury",
+              approvedStrategy:     c.approvedStrategy      ?? c.campaignBrief ?? "",
+              approvedCaption:      c.approvedCaption       ?? "",
+              approvedHashtags:     c.approvedHashtags      ?? "",
+              approvedCreativeNotes:c.approvedCreativeNotes ?? "",
+              cta:                  c.goal     ?? "Book your detail today",
+              platform:             c.platform ?? "Instagram",
+              media,
+              reelStructure: {
+                hook:    media.filter((m) => m.role === "general").slice(0, 1),
+                before:  media.filter((m) => m.role === "before"),
+                process: media.filter((m) => m.role === "process"),
+                after:   media.filter((m) => m.role === "after" || m.role === "reveal"),
+                logo:    media.filter((m) => m.role === "logo"),
+              },
+              outputCallbackUrl: `${base}/api/automation/callback/remotion-video`,
+            };
+          },
         });
         // triggerWorkflow returns NextResponse; treat any 2xx as success
         renderTriggered = renderRes.status < 400;
