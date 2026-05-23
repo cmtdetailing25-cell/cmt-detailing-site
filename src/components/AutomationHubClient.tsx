@@ -180,7 +180,10 @@ function deriveWorkflowState(c: CampaignRow): WorkflowState {
   if (!run) return { isProcessing: false, isCompleted: false, isStuck: false, latestWorkflowState: null };
 
   const runActive = (run.status === "RUNNING" || run.status === "PENDING") && run.completedAt === null;
-  const stuck     = runActive && Date.now() - new Date(run.createdAt).getTime() > 10 * 60 * 1000;
+  // VIDEO_RENDER_PENDING and VIDEO_READY_REVIEW have dedicated pipeline sections with retry UI;
+  // never classify as stuck so they always stay in their sections and never get swallowed by the stuck bucket
+  const isVideoRenderStatus = c.status === "VIDEO_RENDER_PENDING" || c.status === "VIDEO_READY_REVIEW";
+  const stuck = !isVideoRenderStatus && runActive && Date.now() - new Date(run.createdAt).getTime() > 10 * 60 * 1000;
 
   return {
     isProcessing:      runActive,
@@ -278,6 +281,7 @@ function CampaignCard({
   const action = getNextAction(campaign);
   const { isProcessing, isStuck: stuck, latestWorkflowState } = deriveWorkflowState(campaign);
   const hasFailed = latestWorkflowState === "FAILED" && !!campaign.latestRun?.errorMessage;
+  const isVideoRenderFailed = campaign.status === "VIDEO_RENDER_PENDING" && latestWorkflowState === "FAILED";
   const needsAttn = campaign.status === "STRATEGY_PENDING_APPROVAL" || campaign.status === "CREATIVE_PENDING_APPROVAL" || campaign.status === "VIDEO_READY_REVIEW";
   const hasStrategy =
     campaign.status === "STRATEGY_PENDING_APPROVAL" &&
@@ -289,11 +293,12 @@ function CampaignCard({
                                   "bg-[#1e2730] hover:bg-[#2d3840] text-[#94b2b6] border border-[#434e56]";
 
   const borderCls =
-    stuck        ? "border-orange-800/50" :
-    isProcessing ? "border-yellow-800/40" :
-    needsAttn    ? "border-amber-800/40"  :
-    isSelected   ? "border-[#94b2b6]/50"  :
-                   "border-[#2d3840]";
+    stuck              ? "border-orange-800/50" :
+    isProcessing       ? "border-yellow-800/40" :
+    isVideoRenderFailed ? "border-red-800/40"   :
+    needsAttn          ? "border-amber-800/40"  :
+    isSelected         ? "border-[#94b2b6]/50"  :
+                         "border-[#2d3840]";
 
   return (
     <div className={`bg-[#151b23] border rounded-xl p-4 flex flex-col gap-0 relative ${borderCls}${isSelected ? " ring-1 ring-[#94b2b6]/20" : ""}`}>
@@ -419,7 +424,7 @@ function CampaignCard({
           disabled={loading}
           className={`w-full text-xs font-semibold py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${btnCls}`}
         >
-          {loading ? "Working…" : action.label}
+          {loading ? "Working…" : isVideoRenderFailed ? "Retry Render Video" : action.label}
         </button>
       )}
 
@@ -601,7 +606,7 @@ export default function AutomationHubClient({
 
   const stuckCampaigns  = campaigns.filter(isStuck);
   const nonStuck        = campaigns.filter((c) => !isStuck(c));
-  const pendingApproval = campaigns.filter((c) => c.status === "STRATEGY_PENDING_APPROVAL" || c.status === "CREATIVE_PENDING_APPROVAL");
+  const pendingApproval = campaigns.filter((c) => c.status === "STRATEGY_PENDING_APPROVAL" || c.status === "CREATIVE_PENDING_APPROVAL" || c.status === "VIDEO_READY_REVIEW");
   const totalActive     = campaigns.filter((c) => c.status === "PUBLISHED" || c.status === "ACTIVE_AD").length;
   const totalCompleted  = campaigns.filter((c) => c.status === "COMPLETED").length;
   const testCount       = campaigns.filter((c) => c.isTest || c.title.toLowerCase().includes("test")).length;
