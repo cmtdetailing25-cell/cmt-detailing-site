@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import LogoutButton from "@/components/LogoutButton";
-import { PushToggle } from "@/components/PushNotificationManager";
+import { PushDebugPanel } from "@/components/PushNotificationManager";
 
 const navLinks: Array<{ href: string; label: string; exact?: boolean; indent?: boolean }> = [
   { href: "/admin/dashboard",         label: "Dashboard" },
@@ -45,8 +45,8 @@ export default function AdminNav() {
           {link.label}
         </Link>
       ))}
-      <div className="mt-auto flex flex-col gap-3">
-        <PushToggle />
+      <div className="mt-auto flex flex-col gap-1">
+        <PushDebugPanel />
         <Link href="/" className="text-gray-500 hover:text-gray-300 text-xs">
           ← Public site
         </Link>

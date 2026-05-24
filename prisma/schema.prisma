@@ -204,6 +204,17 @@ model PushSubscription {
   updatedAt DateTime @updatedAt
 }
 
+model PushLog {
+  id              String   @id @default(cuid())
+  trigger         String
+  subscriberCount Int      @default(0)
+  sent            Int      @default(0)
+  failed          Int      @default(0)
+  emailFallback   Boolean  @default(false)
+  errors          String[] @default([])
+  createdAt       DateTime @default(now())
+}
+
 // ─── Admin Notifications ──────────────────────────────────────────────────────
 
 model AdminNotification {

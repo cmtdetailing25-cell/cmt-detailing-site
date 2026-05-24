@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/sms"; // optional — only fires if TWILIO_* env vars are set
-import { sendPushToAll } from "@/lib/webpush";
+import { sendPushToAll, markEmailFallback } from "@/lib/webpush";
 import { sendBookingEmail } from "@/lib/email";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -194,17 +194,21 @@ export async function POST(req: NextRequest) {
     // Fire push; if no devices subscribed or push fails → fallback to email
     void (async () => {
       try {
-        const { sent } = await sendPushToAll({
-          title:              "New Booking Request",
-          body:               pushBody,
-          url:                adminUrl,
-          tag:                `booking-${lead.id}`,
-          requireInteraction: true,
-        });
+        const pushResult = await sendPushToAll(
+          {
+            title:              "New Booking Request",
+            body:               pushBody,
+            url:                adminUrl,
+            tag:                `booking-${lead.id}`,
+            requireInteraction: true,
+          },
+          "booking",
+        );
 
         // Email fallback if no push subscribers received it
-        if (sent === 0) {
-          await sendBookingEmail({
+        if (pushResult.sent === 0) {
+          console.log(`[leads] push sent=0 — triggering email fallback`);
+          const emailResult = await sendBookingEmail({
             fullName:         String(fullName).trim(),
             phone:            String(phone).trim(),
             email:            normalizedEmail,
@@ -218,11 +222,15 @@ export async function POST(req: NextRequest) {
             notes:            notes ? String(notes).trim() : null,
             adminUrl,
           });
+          console.log(`[leads] email fallback result:`, emailResult);
+          if (emailResult.ok) await markEmailFallback("booking");
         }
 
         // Optional SMS (only fires if TWILIO_* env vars are configured)
         sendSms(`New booking — ${String(fullName).trim()} · ${String(serviceRequested).trim()} · ${String(preferredDate).trim()}\n${adminUrl}`).catch(() => {});
-      } catch { /* notification failures never block the booking */ }
+      } catch (err) {
+        console.error("[leads] notification error:", err);
+      }
     })();
 
     return NextResponse.json({ lead, clientId: client.id, jobId: detailJob.id }, { status: 201 });
