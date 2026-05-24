@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { sendSms } from "@/lib/sms";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -181,6 +182,20 @@ export async function POST(req: NextRequest) {
         }] : []),
       ],
     });
+
+    // ── 7. SMS notification ─────────────────────────────────────────────────
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://cmt-detailing.vercel.app";
+    const smsBody = [
+      `New booking request — CMT Detailing`,
+      `${String(fullName).trim()} · ${String(phone).trim()}`,
+      `${String(serviceRequested).trim()} · ${year} ${make} ${model}`,
+      `${String(preferredDate).trim()} at ${String(preferredTime).trim()} · ${String(town).trim()}`,
+      notes ? `Note: ${String(notes).trim().slice(0, 80)}` : null,
+      `${appUrl}/admin/bookings`,
+    ].filter(Boolean).join("\n");
+
+    sendSms(smsBody).catch(() => {}); // fire-and-forget — never block the response
 
     return NextResponse.json({ lead, clientId: client.id, jobId: detailJob.id }, { status: 201 });
 
