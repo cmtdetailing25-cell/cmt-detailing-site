@@ -21,7 +21,9 @@ interface BookingEmailData {
 export async function sendBookingEmail(data: BookingEmailData): Promise<{ ok: boolean; error?: string }> {
   const apiKey     = process.env.RESEND_API_KEY;
   const adminEmail = process.env.ADMIN_EMAIL;
-  const from       = process.env.EMAIL_FROM ?? "CMT Admin <notifications@cmtdetailing.com>";
+  // onboarding@resend.dev works immediately without domain verification.
+  // Set EMAIL_FROM once cmtdetailing.com is verified on resend.com/domains.
+  const from       = process.env.EMAIL_FROM ?? "CMT Admin <onboarding@resend.dev>";
 
   if (!apiKey || !adminEmail) return { ok: false, error: "Email not configured" };
 
