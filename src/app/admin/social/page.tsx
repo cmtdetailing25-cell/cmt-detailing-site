@@ -395,11 +395,22 @@ export default async function SocialPage() {
     <div className="p-6 max-w-6xl">
 
       {/* ── Page Header ──────────────────────────────────────────────────── */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white mb-1">Social</h1>
-        <p className="text-gray-400 text-sm">
-          Plan and draft content, track trends, and prepare posts and reels for manual publishing.
-        </p>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white mb-1">Social</h1>
+          <p className="text-gray-400 text-sm">
+            Plan and draft content, track trends, and prepare posts and reels for manual publishing.
+          </p>
+        </div>
+        <a
+          href="/admin/social/insights"
+          className="shrink-0 flex items-center gap-1.5 bg-gray-900 border border-gray-800 hover:border-gray-700 text-gray-400 hover:text-white text-xs px-3 py-2 rounded-lg transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+          </svg>
+          Instagram Insights
+        </a>
       </div>
 
       {/* ── Section Nav ──────────────────────────────────────────────────── */}
