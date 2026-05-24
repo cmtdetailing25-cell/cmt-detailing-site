@@ -248,10 +248,10 @@ export default async function DashboardPage() {
                 </div>
               )}
               {pendingDraftsCount > 0 && (
-                <Link href="/admin/social">
+                <Link href="/admin/social#drafts">
                   <div className="bg-purple-950/40 border border-purple-800/30 rounded-xl p-4 hover:border-purple-700/50 transition-colors group">
                     <p className="text-3xl font-extrabold text-purple-400">{pendingDraftsCount}</p>
-                    <p className="text-purple-600/80 text-xs mt-1">Drafts to Review</p>
+                    <p className="text-purple-600/80 text-xs mt-1">Social Drafts</p>
                     <p className="text-purple-700 text-[10px] mt-2 group-hover:text-purple-400 transition-colors">Review drafts →</p>
                   </div>
                 </Link>
@@ -443,10 +443,10 @@ export default async function DashboardPage() {
           </div>
         </section>
 
-        {/* Social Agent */}
+        {/* Social Planning */}
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[10px] font-semibold text-[#708289] uppercase tracking-widest">Social Agent</h2>
+            <h2 className="text-[10px] font-semibold text-[#708289] uppercase tracking-widest">Social Planning</h2>
             <Link href="/admin/social" className="text-red-400 hover:text-red-300 text-xs transition-colors">Open →</Link>
           </div>
           <div className="bg-[#1a2028] border border-[#2d3840] rounded-xl p-5 space-y-4">
@@ -458,7 +458,7 @@ export default async function DashboardPage() {
                 </p>
               </div>
               <div className="bg-[#151b23] rounded-lg p-3">
-                <p className="text-[#434e56] text-[10px] mb-1">Last run</p>
+                <p className="text-[#434e56] text-[10px] mb-1">Last generated</p>
                 <p className="text-[#e9f0ef] text-sm font-medium">
                   {lastAgentRun ? fmtDate(lastAgentRun.createdAt) : "Never"}
                 </p>
@@ -467,7 +467,7 @@ export default async function DashboardPage() {
             {lastAgentRun && (
               <div className="bg-[#151b23] rounded-lg p-3 flex items-center justify-between">
                 <div>
-                  <p className="text-[#434e56] text-[10px]">Last run status</p>
+                  <p className="text-[#434e56] text-[10px]">Last batch</p>
                   <p className="text-[#708289] text-xs mt-0.5">{lastAgentRun.draftsCreated} draft{lastAgentRun.draftsCreated !== 1 ? "s" : ""} created</p>
                 </div>
                 <AgentRunBadge status={lastAgentRun.status} />

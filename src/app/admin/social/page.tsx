@@ -372,7 +372,7 @@ export default async function SocialPage() {
 
   const navItems = [
     { id: "overview",            label: "Overview"           },
-    { id: "runs",                label: "Agent Runs"         },
+    { id: "runs",                label: "Content Generation" },
     { id: "weekly-plan",         label: "Weekly Plan"        },
     { id: "draft-generator",     label: "Draft Generator"    },
     { id: "drafts",              label: "Draft Posts"        },
@@ -396,17 +396,9 @@ export default async function SocialPage() {
 
       {/* ── Page Header ──────────────────────────────────────────────────── */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white mb-1">Social Media Agent</h1>
+        <h1 className="text-2xl font-bold text-white mb-1">Social</h1>
         <p className="text-gray-400 text-sm">
-          Plan, draft, approve, and eventually publish weekly social content.
-        </p>
-      </div>
-
-      <div className="flex items-start gap-3 bg-gray-900 border border-gray-800 rounded-xl px-5 py-3.5 mb-8">
-        <div className="w-2 h-2 rounded-full bg-green-500 shrink-0 mt-1" />
-        <p className="text-xs text-gray-400 leading-relaxed">
-          <span className="text-white font-semibold">Approval required.</span>{" "}
-          All AI-generated content requires your review and explicit approval before it ever goes live. Nothing is published automatically.
+          Plan and draft content, track trends, and prepare posts and reels for manual publishing.
         </p>
       </div>
 
@@ -433,18 +425,18 @@ export default async function SocialPage() {
         </div>
       </div>
 
-      {/* ── Weekly Agent Run ─────────────────────────────────────────────── */}
-      <SectionHeader id="runs" eyebrow="Automation" title="Weekly Agent Run" />
+      {/* ── Content Generation ───────────────────────────────────────────── */}
+      <SectionHeader id="runs" eyebrow="AI Drafting" title="Content Generation" />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
         <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold mb-1">Manual trigger</p>
-          <h3 className="text-white font-semibold text-base mb-2">Run Weekly Agent v2</h3>
+          <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold mb-1">Generate drafts</p>
+          <h3 className="text-white font-semibold text-base mb-2">Generate Weekly Batch</h3>
           <p className="text-xs text-gray-500 leading-relaxed mb-6 max-w-md">
-            The agent selects the best DetailJobs from your library, builds{" "}
-            {weeklyPostTarget} post{weeklyPostTarget !== 1 ? "s" : ""} +{" "}
-            {weeklyReelTarget} reel{weeklyReelTarget !== 1 ? "s" : ""} using job context, vehicle
-            info, and any active Trend Insights — then queues them for your approval.
+            Selects your best recent DetailJobs and builds{" "}
+            {weeklyPostTarget} post draft{weeklyPostTarget !== 1 ? "s" : ""} +{" "}
+            {weeklyReelTarget} reel draft{weeklyReelTarget !== 1 ? "s" : ""} using job context, vehicle
+            info, and active Trend Insights. All drafts require your review — nothing is published automatically.
           </p>
           <WeeklyAgentButton />
         </div>
@@ -483,10 +475,10 @@ export default async function SocialPage() {
 
       {/* Recent runs history */}
       <div className="mb-4">
-        <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold mb-3">Recent agent runs</p>
+        <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold mb-3">Recent batches</p>
 
         {recentRuns.length === 0 ? (
-          <p className="text-xs text-gray-600 italic">No runs yet. Click Run Weekly Agent above to get started.</p>
+          <p className="text-xs text-gray-600 italic">No batches yet. Click Generate above to get started.</p>
         ) : (
           <div className="rounded-xl border border-gray-800 overflow-hidden">
             {recentRuns.map((run, idx) => {

@@ -5,13 +5,12 @@ import { usePathname } from "next/navigation";
 import LogoutButton from "@/components/LogoutButton";
 
 const navLinks = [
-  { href: "/admin/dashboard",    label: "Dashboard"    },
-  { href: "/admin/bookings",     label: "Bookings"     },
-  { href: "/admin/clients",      label: "Clients"      },
-  { href: "/admin/jobs",         label: "Jobs"         },
-  { href: "/admin/media",        label: "Media"        },
-  { href: "/admin/social",       label: "Social Agent" },
-  { href: "/admin/automation",   label: "Automation"   },
+  { href: "/admin/dashboard", label: "Dashboard" },
+  { href: "/admin/bookings",  label: "Bookings"  },
+  { href: "/admin/clients",   label: "Clients"   },
+  { href: "/admin/jobs",      label: "Jobs"      },
+  { href: "/admin/media",     label: "Media"     },
+  { href: "/admin/social",    label: "Social"    },
 ];
 
 export default function AdminNav() {
