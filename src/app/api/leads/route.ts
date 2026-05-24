@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { sendSms } from "@/lib/sms";
+import { sendSms } from "@/lib/sms"; // optional — only fires if TWILIO_* env vars are set
+import { sendPushToAll } from "@/lib/webpush";
+import { sendBookingEmail } from "@/lib/email";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -183,19 +185,45 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    // ── 7. SMS notification ─────────────────────────────────────────────────
+    // ── 7. Push notification + email fallback ───────────────────────────────
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://cmt-detailing.vercel.app";
-    const smsBody = [
-      `New booking request — CMT Detailing`,
-      `${String(fullName).trim()} · ${String(phone).trim()}`,
-      `${String(serviceRequested).trim()} · ${year} ${make} ${model}`,
-      `${String(preferredDate).trim()} at ${String(preferredTime).trim()} · ${String(town).trim()}`,
-      notes ? `Note: ${String(notes).trim().slice(0, 80)}` : null,
-      `${appUrl}/admin/bookings`,
-    ].filter(Boolean).join("\n");
+    const appUrl   = process.env.NEXT_PUBLIC_APP_URL ?? "https://cmtdetailing.com";
+    const adminUrl = `${appUrl}/admin/bookings`;
+    const pushBody = `${String(fullName).trim()} · ${String(serviceRequested).trim()}\n${year} ${make} ${model} · ${String(preferredDate).trim()} at ${String(preferredTime).trim()}`;
 
-    sendSms(smsBody).catch(() => {}); // fire-and-forget — never block the response
+    // Fire push; if no devices subscribed or push fails → fallback to email
+    void (async () => {
+      try {
+        const { sent } = await sendPushToAll({
+          title:              "New Booking Request",
+          body:               pushBody,
+          url:                adminUrl,
+          tag:                `booking-${lead.id}`,
+          requireInteraction: true,
+        });
+
+        // Email fallback if no push subscribers received it
+        if (sent === 0) {
+          await sendBookingEmail({
+            fullName:         String(fullName).trim(),
+            phone:            String(phone).trim(),
+            email:            normalizedEmail,
+            vehicleYear:      year,
+            vehicleMake:      make,
+            vehicleModel:     model,
+            serviceRequested: String(serviceRequested).trim(),
+            town:             String(town).trim(),
+            preferredDate:    String(preferredDate).trim(),
+            preferredTime:    String(preferredTime).trim(),
+            notes:            notes ? String(notes).trim() : null,
+            adminUrl,
+          });
+        }
+
+        // Optional SMS (only fires if TWILIO_* env vars are configured)
+        sendSms(`New booking — ${String(fullName).trim()} · ${String(serviceRequested).trim()} · ${String(preferredDate).trim()}\n${adminUrl}`).catch(() => {});
+      } catch { /* notification failures never block the booking */ }
+    })();
 
     return NextResponse.json({ lead, clientId: client.id, jobId: detailJob.id }, { status: 201 });
 

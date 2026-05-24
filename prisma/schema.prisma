@@ -128,7 +128,7 @@ model Vehicle {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client     Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
   detailJobs DetailJob[]
   campaigns  MarketingCampaign[]
 }
@@ -171,9 +171,9 @@ model Lead {
   updatedAt DateTime   @updatedAt
   status    LeadStatus @default(NEW)
 
-  fullName  String
-  phone     String
-  email     String
+  fullName String
+  phone    String
+  email    String
 
   vehicleYear  String
   vehicleMake  String
@@ -190,6 +190,18 @@ model Lead {
   clientId   String?
   client     Client?     @relation(fields: [clientId], references: [id])
   detailJobs DetailJob[]
+}
+
+// ─── Push Subscriptions ───────────────────────────────────────────────────────
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ─── Admin Notifications ──────────────────────────────────────────────────────
@@ -241,13 +253,13 @@ model SitePhoto {
   lastReviewedForSocial  DateTime?
   reviewedByAgent        Boolean   @default(false)
 
-  fileType  String?
-  width     Int?
-  height    Int?
-  duration  Float?
+  fileType String?
+  width    Int?
+  height   Int?
+  duration Float?
 
   detailJobId String?
-  detailJob   DetailJob?           @relation(fields: [detailJobId], references: [id])
+  detailJob   DetailJob? @relation(fields: [detailJobId], references: [id])
 
   socialMedia   SocialContentMedia[]
   campaignMedia CampaignMedia[]
@@ -256,21 +268,21 @@ model SitePhoto {
 // ─── Social Media Agent models ────────────────────────────────────────────────
 
 model SocialAgentRun {
-  id            String               @id @default(cuid())
-  status        SocialAgentRunStatus @default(PENDING)
-  weekStartDate DateTime
-  weekEndDate   DateTime
-  postsTarget   Int                  @default(3)
-  reelsTarget   Int                  @default(2)
+  id             String               @id @default(cuid())
+  status         SocialAgentRunStatus @default(PENDING)
+  weekStartDate  DateTime
+  weekEndDate    DateTime
+  postsTarget    Int                  @default(3)
+  reelsTarget    Int                  @default(2)
   draftsCreated  Int                  @default(0)
   postsGenerated Int                  @default(0)
   reelsGenerated Int                  @default(0)
   mediaReviewed  Int                  @default(0)
   startedAt      DateTime?
-  completedAt   DateTime?
-  errorMessage  String?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  completedAt    DateTime?
+  errorMessage   String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   drafts SocialContentDraft[]
 }
@@ -293,11 +305,11 @@ model SocialContentDraft {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
-  agentRunId  String?
-  agentRun    SocialAgentRun? @relation(fields: [agentRunId], references: [id])
+  agentRunId String?
+  agentRun   SocialAgentRun? @relation(fields: [agentRunId], references: [id])
 
   detailJobId String?
-  detailJob   DetailJob?      @relation(fields: [detailJobId], references: [id])
+  detailJob   DetailJob? @relation(fields: [detailJobId], references: [id])
 
   trendInsightId String?
   trendInsight   TrendInsight? @relation(fields: [trendInsightId], references: [id])
