@@ -11,7 +11,7 @@ import {
 } from "@/lib/meta";
 
 export const metadata: Metadata = { title: "Social Insights — CMT Admin" };
-export const revalidate = 300; // refresh every 5 minutes
+export const dynamic = "force-dynamic";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -117,7 +117,7 @@ function PostCard({ post }: { post: IgPost }) {
         </p>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-1 text-center">
+        <div className="grid grid-cols-2 gap-1 text-center">
           <div>
             <p className="text-xs font-bold text-[#e9f0ef]">{fmt(post.like_count)}</p>
             <p className="text-[9px] text-[#434e56]">Likes</p>
@@ -126,21 +126,27 @@ function PostCard({ post }: { post: IgPost }) {
             <p className="text-xs font-bold text-[#e9f0ef]">{fmt(post.comments_count)}</p>
             <p className="text-[9px] text-[#434e56]">Comments</p>
           </div>
-          <div>
-            <p className={`text-xs font-bold ${post.reach ? "text-[#94b2b6]" : "text-[#434e56]"}`}>
-              {fmt(post.reach)}
-            </p>
-            <p className="text-[9px] text-[#434e56]">Reach</p>
-          </div>
         </div>
 
-        {/* Plays row for video/reel */}
-        {post.plays != null && (
-          <div className="mt-2 pt-2 border-t border-[#2d3840] flex justify-between">
-            <span className="text-[9px] text-[#434e56]">Plays</span>
-            <span className="text-[10px] font-semibold text-pink-400">{fmt(post.plays)}</span>
+        {/* Insight rows */}
+        <div className="mt-2 pt-2 border-t border-[#2d3840] space-y-1">
+          <div className="flex justify-between">
+            <span className="text-[9px] text-[#434e56]">Accounts Reached</span>
+            <span className={`text-[10px] font-semibold ${post.reach ? "text-[#94b2b6]" : "text-[#434e56]"}`}>{fmt(post.reach)}</span>
           </div>
-        )}
+          {(post.plays != null) && (
+            <div className="flex justify-between">
+              <span className="text-[9px] text-[#434e56]">Views</span>
+              <span className="text-[10px] font-semibold text-pink-400">{fmt(post.plays)}</span>
+            </div>
+          )}
+          {(post.profile_visits != null) && (
+            <div className="flex justify-between">
+              <span className="text-[9px] text-[#434e56]">Profile Visits</span>
+              <span className="text-[10px] font-semibold text-blue-400">{fmt(post.profile_visits)}</span>
+            </div>
+          )}
+        </div>
 
         {/* Date */}
         <p className="text-[9px] text-[#434e56] mt-2">{fmtDate(post.timestamp)}</p>
@@ -228,7 +234,7 @@ export default async function InsightsPage() {
   const [accountResult, insightsResult, postsResult] = await Promise.allSettled([
     fetchIgAccount(cfg),
     fetchIgAccountInsights(cfg, 28),
-    fetchIgMedia(cfg, 20),
+    fetchIgMedia(cfg, 50),
   ]);
 
   // If account fetch fails, token is invalid — surface the error
@@ -319,8 +325,8 @@ export default async function InsightsPage() {
               accent="teal"
             />
             <MetricCard
-              label="Impressions"
-              value={fmt(insights?.impressions)}
+              label="Accounts Engaged"
+              value={fmt(insights?.accounts_engaged)}
               sub="Last 28 days"
               accent="blue"
             />

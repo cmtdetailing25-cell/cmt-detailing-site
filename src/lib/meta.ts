@@ -35,10 +35,10 @@ export interface IgAccount {
 }
 
 export interface IgAccountInsights {
-  impressions:   number;
-  reach:         number;
-  profile_views: number;
-  periodDays:    number;
+  accounts_engaged: number;
+  reach:            number;
+  profile_views:    number;
+  periodDays:       number;
 }
 
 export type IgMediaType = "IMAGE" | "VIDEO" | "CAROUSEL_ALBUM" | "REEL";
@@ -54,10 +54,10 @@ export interface IgPost {
   like_count:     number;
   comments_count: number;
   // Per-post insights (null if unavailable)
-  reach:          number | null;
-  saved:          number | null;
-  plays:          number | null;
-  impressions:    number | null;
+  reach:           number | null;
+  saved:           number | null;
+  plays:           number | null;
+  profile_visits:  number | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -90,7 +90,8 @@ export async function fetchIgAccountInsights(cfg: MetaConfig, days = 28): Promis
   const since = until - days * 86400;
 
   const params = new URLSearchParams({
-    metric:       "impressions,reach,profile_views",
+    metric:       "accounts_engaged,reach,profile_views",
+    metric_type:  "total_value",
     period:       "day",
     since:        String(since),
     until:        String(until),
@@ -101,19 +102,19 @@ export async function fetchIgAccountInsights(cfg: MetaConfig, days = 28): Promis
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
 
-  type MetricData = { name: string; values: Array<{ value: number }> };
+  type MetricData = { name: string; total_value?: { value: number } };
   const metrics: MetricData[] = data.data ?? [];
 
-  function sum(name: string) {
+  function total(name: string) {
     const m = metrics.find((m) => m.name === name);
-    return m ? m.values.reduce((acc, v) => acc + (v.value ?? 0), 0) : 0;
+    return m?.total_value?.value ?? 0;
   }
 
   return {
-    impressions:   sum("impressions"),
-    reach:         sum("reach"),
-    profile_views: sum("profile_views"),
-    periodDays:    days,
+    accounts_engaged: total("accounts_engaged"),
+    reach:            total("reach"),
+    profile_views:    total("profile_views"),
+    periodDays:       days,
   };
 }
 
@@ -160,10 +161,10 @@ export async function fetchIgMedia(cfg: MetaConfig, limit = 20): Promise<IgPost[
       timestamp:      m.timestamp,
       like_count:     m.like_count ?? 0,
       comments_count: m.comments_count ?? 0,
-      reach:          ins?.reach        ?? null,
-      saved:          ins?.saved        ?? null,
-      plays:          ins?.plays        ?? null,
-      impressions:    ins?.impressions  ?? null,
+      reach:          ins?.reach          ?? null,
+      saved:          ins?.saved          ?? null,
+      plays:          ins?.plays          ?? null,
+      profile_visits: ins?.profile_visits ?? null,
     };
   });
 }
@@ -171,32 +172,53 @@ export async function fetchIgMedia(cfg: MetaConfig, limit = 20): Promise<IgPost[
 // ── Per-post insights ─────────────────────────────────────────────────────────
 
 interface PostInsights {
-  reach?:       number | null;
-  impressions?: number | null;
-  saved?:       number | null;
-  plays?:       number | null;
+  reach?:          number | null;
+  saved?:          number | null;
+  plays?:          number | null;
+  profile_visits?: number | null;
 }
 
 async function fetchPostInsights(cfg: MetaConfig, mediaId: string, mediaType: IgMediaType): Promise<PostInsights> {
-  // Metrics vary by media type — REELs don't support "impressions", only "plays"
-  const metric = mediaType === "REEL"
-    ? "reach,saved,plays,shares"
-    : "impressions,reach,saved";
+  const isVideo = mediaType === "REEL" || mediaType === "VIDEO";
+  const hasProfileVisits = mediaType === "IMAGE" || mediaType === "CAROUSEL_ALBUM";
 
-  const res = await fetch(
-    `${GRAPH}/${mediaId}/insights?metric=${metric}&access_token=${cfg.token}`,
+  // Fetch core metrics separately from video views so one failure can't wipe the other
+  const coreMetric = hasProfileVisits ? "reach,saved,profile_visits" : "reach,saved";
+  const coreRes = await fetch(
+    `${GRAPH}/${mediaId}/insights?metric=${coreMetric}&access_token=${cfg.token}`,
     { cache: "no-store" },
   );
-  const data = await res.json();
-  if (data.error) return {};
+  const coreData = await coreRes.json();
 
   type InsightItem = { name: string; value?: number; values?: Array<{ value: number }> };
-  const items: InsightItem[] = data.data ?? [];
+  const items: InsightItem[] = coreData.error ? [] : (coreData.data ?? []);
+
+  // Video views: try "plays" first (Reels + newer videos), fallback to "video_views" (older feed videos)
+  let plays: number | null = null;
+  if (isVideo) {
+    const playsRes = await fetch(
+      `${GRAPH}/${mediaId}/insights?metric=plays&access_token=${cfg.token}`,
+      { cache: "no-store" },
+    );
+    const playsData = await playsRes.json();
+    if (!playsData.error && playsData.data?.length) {
+      plays = metricValue(playsData.data as InsightItem[], "plays");
+    } else {
+      const vvRes = await fetch(
+        `${GRAPH}/${mediaId}/insights?metric=video_views&access_token=${cfg.token}`,
+        { cache: "no-store" },
+      );
+      const vvData = await vvRes.json();
+      if (!vvData.error && vvData.data?.length) {
+        plays = metricValue(vvData.data as InsightItem[], "video_views");
+      }
+    }
+  }
 
   return {
-    reach:       metricValue(items, "reach"),
-    impressions: metricValue(items, "impressions"),
-    saved:       metricValue(items, "saved"),
-    plays:       metricValue(items, "plays") ?? metricValue(items, "video_views"),
+    reach:          metricValue(items, "reach"),
+    saved:          metricValue(items, "saved"),
+    plays,
+    profile_visits: metricValue(items, "profile_visits"),
   };
 }
