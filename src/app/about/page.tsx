@@ -4,7 +4,7 @@ import FadeUp from "@/components/FadeUp";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "About — CMT Detailing",
+  title: "About Cameron Dorr, Founder | CMT Detailing",
   description:
     "Meet Cameron Dorr, founder of CMT Detailing — professional mobile car detailing in Taunton, MA.",
 };

@@ -1,5 +1,12 @@
 import BookingForm from "@/components/BookingForm";
 import FadeUp from "@/components/FadeUp";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Book Mobile Detailing in Taunton, MA | CMT Detailing",
+  description:
+    "Request your mobile detail in Taunton, MA in about 2 minutes. Pick your service and time — we confirm and come to you.",
+};
 
 export default function BookPage() {
   return (

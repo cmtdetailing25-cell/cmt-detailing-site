@@ -66,7 +66,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   const config = SERVICE_CONFIG[params.slug as Slug];
   if (!config) return {};
   return {
-    title: `${config.title} Gallery — CMT Detailing`,
+    title: `${config.title} in Taunton, MA | CMT Detailing`,
     description: config.description,
   };
 }

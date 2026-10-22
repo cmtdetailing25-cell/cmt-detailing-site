@@ -3,6 +3,13 @@ import Image from "next/image";
 import HeroContent from "@/components/HeroContent";
 import FadeUp from "@/components/FadeUp";
 import HomeHeader from "@/components/HomeHeader";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Mobile Car Detailing in Taunton, MA | CMT Detailing",
+  description:
+    "Mobile detailing in Taunton, MA & nearby towns. Interior, full details, paint correction & ceramic coating at your driveway. See prices & request a booking.",
+};
 
 const services = [
   {

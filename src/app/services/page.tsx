@@ -1,6 +1,13 @@
 import Link from "next/link";
 import Image from "next/image";
 import FadeUp from "@/components/FadeUp";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Detailing Services & Prices in Taunton, MA | CMT Detailing",
+  description:
+    "Interior from $150, Full Detail from $250, ceramic coating from $1,000. Mobile detailing across Taunton, Raynham, Bridgewater & more — view packages & prices.",
+};
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
