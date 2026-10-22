@@ -1,3 +1,4 @@
+// Deploy trigger: repo visibility restored to public 2026-10-22 (Vercel builds public repos on the free plan).
 import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
 import localFont from "next/font/local";
