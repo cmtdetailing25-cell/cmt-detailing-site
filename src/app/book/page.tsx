@@ -28,6 +28,24 @@ export default function BookPage() {
           </p>
         </FadeUp>
 
+        <FadeUp delay={0.1} className="mb-6">
+          <a
+            href="https://calendar.app.google/oHovXsVoGCxUt6nD8"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block bg-zinc-900/80 backdrop-blur-sm border border-zinc-700 rounded-2xl p-6 text-center hover:border-zinc-500 transition-colors"
+          >
+            <p className="text-white font-semibold text-lg mb-1">
+              Book a real time slot &rarr;
+            </p>
+            <p className="text-zinc-400 text-sm leading-relaxed">
+              See our live availability and grab an open slot — 7am&ndash;6pm,
+              Monday&ndash;Sunday. Prefer to ask first? Use the request form
+              below instead.
+            </p>
+          </a>
+        </FadeUp>
+
         <FadeUp delay={0.15} className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-700 rounded-2xl p-8">
           <BookingForm />
         </FadeUp>
