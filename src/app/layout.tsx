@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
 import localFont from "next/font/local";
+import Script from "next/script";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 
@@ -93,6 +94,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${canvaSans.variable} ${montserrat.variable} font-sans`}>
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-F8PQ1DLQFD"
+          strategy="afterInteractive"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-F8PQ1DLQFD');`}
+        </Script>
         <Navbar />
         <main>{children}</main>
         <script
