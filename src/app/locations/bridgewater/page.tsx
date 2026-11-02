@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     title: "Mobile Car Detailing in Bridgewater, MA | CMT Detailing",
     description:
       "Mobile car detailing in Bridgewater, MA — interior, full details, paint correction & ceramic coating at your driveway. From $100. We come to you.",
-    url: "https://cmtdetailing.com/locations/raynham",
+    url: "https://cmtdetailing.com/locations/bridgewater",
     images: [
       {
         url: "/images/hero-mustang.jpg",
@@ -90,7 +90,7 @@ const townJsonLd = {
     addressRegion: "MA",
     addressCountry: "US",
   },
-  url: "https://cmtdetailing.com/locations/raynham",
+  url: "https://cmtdetailing.com/locations/bridgewater",
 };
 
 export default function BridgewaterPage() {

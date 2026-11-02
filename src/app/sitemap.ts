@@ -35,14 +35,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
 
     {
-      url:             `${BASE}/locations/bridgewater`,
+      url:             `${BASE}/locations/raynham`,
       lastModified:    new Date(),
       changeFrequency: "monthly",
       priority:        0.8,
     },
 
     {
-      url:             `${BASE}/locations/raynham`,
+      url:             `${BASE}/locations/bridgewater`,
       lastModified:    new Date(),
       changeFrequency: "monthly",
       priority:        0.8,
