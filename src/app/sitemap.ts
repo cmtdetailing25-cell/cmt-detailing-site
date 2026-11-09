@@ -49,6 +49,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
 
     {
+      url:             `${BASE}/locations/middleborough`,
+      lastModified:    new Date(),
+      changeFrequency: "monthly",
+      priority:        0.8,
+    },
+
+    {
       url:             `${BASE}/services/interior-detail`,
       lastModified:    new Date(),
       changeFrequency: "monthly",
