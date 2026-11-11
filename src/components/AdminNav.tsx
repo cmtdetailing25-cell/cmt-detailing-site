@@ -9,6 +9,7 @@ const navLinks: Array<{ href: string; label: string; exact?: boolean; indent?: b
   { href: "/admin/dashboard",         label: "Dashboard" },
   { href: "/admin/bookings",          label: "Bookings"  },
   { href: "/admin/clients",           label: "Clients"   },
+  { href: "/admin/prospects",         label: "Prospects" },
   { href: "/admin/jobs",              label: "Jobs"      },
   { href: "/admin/media",             label: "Media"     },
   { href: "/admin/social",            label: "Social",   exact: true },

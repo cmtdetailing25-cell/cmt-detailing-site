@@ -641,3 +641,38 @@ model CampaignMedia {
 
   @@unique([campaignId, sitePhotoId])
 }
+
+// ─── Prospects (IG Prospecting & Collab) ───────────────────────────────────────
+// Ranked Instagram prospect pipeline for collab outreach. Cameron sends all DMs
+// himself from @cmt_detailing — the admin only stores the list + drafts + status.
+// Seeded Nov 11, 2026 from prospect scans #1-3 (28 prospects + 22 excluded/watchlist).
+
+enum ProspectStatus {
+  STAGED
+  SENT
+  REPLIED
+  BOOKED
+  NO_RESPONSE
+  EXCLUDED
+  WATCHLIST
+}
+
+model Prospect {
+  id            String         @id @default(cuid())
+  handle        String         @unique
+  tier          String?
+  isProvisional Boolean        @default(false)
+  followers     String?
+  localPctEst   String?
+  town          String?
+  category      String
+  mentionCode   String?        @unique
+  dmDraft       String?
+  dmDraftStatus String?
+  status        ProspectStatus @default(STAGED)
+  dateAdded     DateTime
+  sortOrder     Int            @default(0)
+  notes         String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
