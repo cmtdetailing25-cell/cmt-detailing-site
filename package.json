@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && (prisma migrate resolve --applied 0_baseline || true) && prisma migrate deploy && next build",
+    "build": "prisma generate && (prisma migrate resolve --applied 0_baseline || true) && (prisma migrate resolve --rolled-back 20261111090000_add_prospect || true) && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "next lint",
     "db:push": "prisma db push",
